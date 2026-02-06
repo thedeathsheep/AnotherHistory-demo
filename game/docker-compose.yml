@@ -1,0 +1,12 @@
+# 两台机器上都能用：docker compose up 后浏览器打开 http://localhost:5173
+# 不需要本机安装 Node；Electron 打包仍在本地做。
+services:
+  web:
+    build: .
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules  # 避免覆盖容器内 node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=1  # 文件变更在挂载卷下能热更新

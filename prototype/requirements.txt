@@ -1,0 +1,4 @@
+# AnotherHistory prototype - Python + Textual (方案 B)
+textual>=0.47.0
+rich>=13.0.0
+requests>=2.28.0

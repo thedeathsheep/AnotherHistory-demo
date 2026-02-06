@@ -1,0 +1,72 @@
+# 行旅 · Another History（方案 A）
+
+Electron + React + TypeScript + Tailwind，与 GDD / TechnicalFrame 对齐。
+
+## 环境
+
+- Node.js 18+
+- npm 或 pnpm
+
+## 安装与运行
+
+### 方式一：本机 Node（需已安装 Node.js 18+）
+
+```bash
+cd game
+npm install
+```
+
+**浏览器开发（推荐先跑通）：**
+
+```bash
+npm run dev
+```
+
+打开 http://localhost:5173 。若需 AI 生成，在项目根目录的 `api_key.txt` 中配置好 key 后，在 `game` 下新建 `.env`：
+
+```
+VITE_AIHUBMIX_API_KEY=sk-你的key
+```
+
+或新建 `public/config.json`（不要提交）：`{ "aihubmixApiKey": "sk-..." }`
+
+**桌面端（Electron）：**
+
+```bash
+npm run electron:dev
+```
+
+会先启动 Vite，再打开 Electron 窗口并加载当前页面。
+
+### 方式二：Docker（两台机器环境一致，无需本机装 Node）
+
+在**任意一台**有 Docker 的机器上：
+
+```bash
+cd game
+docker compose up --build
+```
+
+浏览器打开 http://localhost:5173 即可。代码用 Git 同步到另一台机器后，同样执行 `docker compose up`，环境一致。Electron 桌面版仍需在本机安装 Node 后执行 `npm run electron:dev`。
+
+## 打包
+
+```bash
+npm run build
+```
+
+产物在 `dist/`，可直接用静态服务器部署。Electron 打包可后续用 electron-builder 等接入。
+
+## 目录
+
+| 目录/文件 | 说明 |
+|-----------|------|
+| `src/game/` | 类型、骨架加载、状态、AI 桥接 |
+| `src/components/` | 叙事框、状态框、感应框、卷轴框 |
+| `public/data/skeleton.json` | 骨架数据（与 prototype 一致） |
+| `electron/main.cjs` | Electron 主进程 |
+
+## 与原型对应关系
+
+- 核心循环与 prototype 一致：入界 → 叙事（骨架 + 可选 AI）→ 感应 → 抉择 → 结案（异史归档）。
+- API Key 通过 `VITE_AIHUBMIX_API_KEY` 或 `public/config.json` 提供，与 prototype 的 `api_key.txt` 二选一即可。
