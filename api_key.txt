@@ -1,0 +1,164 @@
+
+google AI studio api_key:AIzaSyA3QyHurXtZ7QXk4NgkvGZcSm6yxEhzCp8 没充钱
+
+
+AIHUBMIX_API_KEY: 
+client = genai.Client(
+    api_key="sk-e5QK774qxTvZV6wA2b5bAaC2E23949409aC47eEa13Ce5597", # 🔑 换成你在 AiHubMix 生成的密钥
+    http_options={"base_url": "https://aihubmix.com/gemini"},
+)
+
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.aihubmix.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# 快速开始
+
+> 生成 API 密钥并进行首次调用
+
+## 直接调用 AIHubMix API
+
+<Tip>
+  其中 `<AIHUBMIX_API_KEY>` 替换为 [AIhubmix Key](https://aihubmix.com/token)，注意 `key` 的有效期和额度限制。
+</Tip>
+
+可使用的 `model` 列表，可查阅 [模型广场](https://aihubmix.com/models) ，复制模型名称替换即可。
+
+<CodeGroup>
+  ```py Python theme={null}
+  import requests
+  import json
+
+  response = requests.post(
+    url="https://aihubmix.com/v1/chat/completions",
+    headers={
+      "Authorization": "Bearer <AIHUBMIX_API_KEY>",
+      "Content-Type": "application/json",
+    },
+    data=json.dumps({
+      "model": "gpt-4o-mini", # 替换模型 id
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the meaning of life?"
+        }
+      ]
+    })
+  )
+  ```
+
+  ```typescript Javascript theme={null}
+  // 请在 https://aihubmix.com 域名下尝试，否则有浏览器跨域问题
+  fetch('https://aihubmix.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer <AIHUBMIX_API_KEY>',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini", // 替换模型 id
+      messages: [
+        {
+           "role": "user",
+           "content": "What is the meaning of life?"
+        }
+      ]
+    }),
+  })
+  ```
+
+  ```Shell Curl theme={null}
+  curl 'https://aihubmix.com/v1/chat/completions'
+  -H 'Authorization: Bearer <AIHUBMIX_API_KEY>'
+  -H 'Content-Type: application/json'
+  -d '{
+     "model": "gpt-4o-mini",
+     "messages": [
+        {
+           "role": "user",
+           "content": "What is the meaning of life?"
+        }
+     ]
+  }'
+  ```
+</CodeGroup>
+
+支持流式调用，只需要增加参数 `stream: true`
+
+## 使用 OpenAI SDK
+
+其中 `<AIHUBMIX_API_KEY>` 替换为 [AIhubmix Key](https://aihubmix.com/token)，注意 `key` 的有效期和额度限制。 可使用的 `model` 列表，可查阅 [模型广场](https://aihubmix.com/models) ，复制模型名称替换即可。
+
+<CodeGroup>
+  ```py Python theme={null}
+  from openai import OpenAI
+
+  client = OpenAI(
+    base_url="https://aihubmix.com/v1",
+    api_key="<AIHUBMIX_API_KEY>",
+  )
+
+  completion = client.chat.completions.create(
+    model="gpt-4o-mini", # 替换模型 id
+    messages=[
+      {
+        "role": "developer",
+        "content": "总是用中文回复"
+      },    
+      {
+        "role": "user",
+        "content": "What is the meaning of life?"
+      }
+    ],
+    temperature=0.8,
+    max_tokens=1024,
+    top_p=1,
+    frequency_penalty=0,
+    presence_penalty=0,
+    seed=random.randint(1, 1000000000),
+  )
+
+  print(completion.choices[0].message.content)
+  ```
+
+  ```js Javascript theme={null}
+  import OpenAI from 'openai';
+
+  const openai = new OpenAI({
+    baseURL: 'https://aihubmix.com/v1',
+    apiKey: '<AIHUBMIX_API_KEY>',
+  });
+
+  async function main() {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini", // 替换模型 id
+      messages: [
+        {
+           "role": "user",
+           "content": "What is the meaning of life?"
+        }
+      ]
+    });
+
+    console.log(completion.choices[0].message);
+  }
+
+  main();
+  ```
+</CodeGroup>
+
+对于支持搜索的模型，可以追加下方参数来支持：
+
+```Python  theme={null}
+  web_search_options={}, # 搜索参数
+```
+
+可用模型：`gpt-4o-search-preview`、`gpt-4o-mini-search-preview`。
+
+<Info>
+  注意搜索模型暂不支持 `temperature` 等细节参数。
+</Info>
+
+## 通过第三方客户端发起请求
+
+参考 [场景示例](/cn/clients/AnythingLLM)
