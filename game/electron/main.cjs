@@ -1,19 +1,66 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const { spawn } = require('child_process')
 
 const isDev = process.env.NODE_ENV !== 'production'
+const appRoot = path.join(__dirname, '..')
+
+ipcMain.handle('regenerate-generated', async (_event, chapterId = 'prologue') => {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+    const scriptPath = path.join(appRoot, 'scripts', 'generate-chapter.mjs')
+    const child = spawn(
+      'node',
+      [scriptPath, chapterId, '--force'],
+      { cwd: appRoot, stdio: ['ignore', 'pipe', 'pipe'], shell: false }
+    )
+    let stdout = ''
+    let stderr = ''
+    child.stdout?.on('data', (d) => { stdout += d.toString() })
+    child.stderr?.on('data', (d) => { stderr += d.toString() })
+    child.on('close', (code, signal) => {
+      if (code === 0) finish({ ok: true })
+      else finish({ ok: false, error: stderr || stdout || `exit ${code}` })
+    })
+    child.on('error', (err) => finish({ ok: false, error: err.message }))
+  })
+})
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 900,
     height: 700,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
   })
   if (isDev) {
-    win.loadURL('http://localhost:5173')
-    win.webContents.openDevTools()
+    const url = process.env.VITE_DEV_URL || 'http://localhost:5173'
+    win.webContents.on('did-fail-load', (_, code, desc, urlLoaded) => {
+      console.error('[Electron] load failed:', code, desc, urlLoaded)
+    })
+    win.webContents.on('did-finish-load', () => {
+      console.log('[Electron] page loaded:', win.webContents.getURL())
+    })
+    win.loadURL(url)
+    const showAndDevTools = () => {
+      win.show()
+      win.webContents.openDevTools()
+    }
+    win.webContents.once('did-finish-load', showAndDevTools)
+    setTimeout(() => { if (!win.isVisible()) showAndDevTools() }, 5000)
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
+    win.once('ready-to-show', () => win.show())
   }
 }
 

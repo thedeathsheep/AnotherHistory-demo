@@ -6,3 +6,4 @@ dist-electron
 public/config.json
 *.log
 .DS_Store
+generated/

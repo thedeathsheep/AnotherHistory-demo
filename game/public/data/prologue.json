@@ -1,0 +1,133 @@
+{
+  "id": "prologue",
+  "name": "序章",
+  "entry_node": "scene_1",
+  "nodes": [
+    {
+      "node_id": "scene_1",
+      "plot_guide": [
+        "荒野",
+        "古道",
+        "书箱",
+        "昏睡"
+      ],
+      "taboo": [],
+      "objective": "唤醒自我，理解环境",
+      "description": "你醒过来的时候，草还挂着露。脚边是一条踩出来的土路，背上的东西压得肩头发酸。天刚亮。",
+      "choices": [
+        {
+          "text": "拎拎肩上那包，沉。",
+          "next": "scene_2",
+          "state": {},
+          "conclusion_label": null
+        },
+        {
+          "text": "先爬起来，瞅瞅四下。",
+          "next": "scene_2",
+          "state": {},
+          "conclusion_label": null
+        }
+      ]
+    },
+    {
+      "node_id": "scene_2",
+      "plot_guide": [
+        "草地",
+        "晴朗",
+        "安全",
+        "思索"
+      ],
+      "taboo": [],
+      "objective": "选择前行或休息",
+      "description": "眼前一片草，黄不拉几的，风一过沙沙响。日头挺好，前头还能瞅见路。",
+      "choices": [
+        {
+          "text": "往前蹚。",
+          "next": "scene_3",
+          "state": {},
+          "conclusion_label": null
+        },
+        {
+          "text": "在草里坐会儿。",
+          "next": "__结案__",
+          "conclusion_label": "草地短暂休憩"
+        }
+      ]
+    },
+    {
+      "node_id": "scene_3",
+      "plot_guide": [
+        "树木",
+        "光影",
+        "前行",
+        "观察"
+      ],
+      "taboo": [],
+      "objective": "观察树下光影",
+      "description": "路边有树，影子碎在地上，光一块一块的。你站住，没动。",
+      "choices": [
+        {
+          "text": "凑过去，看看那影子。",
+          "next": "scene_4",
+          "state": {},
+          "conclusion_label": null
+        },
+        {
+          "text": "不看，走。",
+          "next": "__结案__",
+          "conclusion_label": "光影未记录"
+        }
+      ]
+    },
+    {
+      "node_id": "scene_4",
+      "plot_guide": [
+        "树影",
+        "疑虑",
+        "记录",
+        "观察"
+      ],
+      "taboo": [],
+      "objective": "决定是否记录光影",
+      "description": "树影里的光在晃。你杵在那儿，想记，又有点懒。",
+      "choices": [
+        {
+          "text": "记一笔。",
+          "next": "scene_5",
+          "state": {},
+          "conclusion_label": null
+        },
+        {
+          "text": "不记，走人。",
+          "next": "__结案__",
+          "conclusion_label": "光影未记录"
+        }
+      ]
+    },
+    {
+      "node_id": "scene_5",
+      "plot_guide": [
+        "警觉",
+        "回头",
+        "前行",
+        "异动"
+      ],
+      "taboo": [],
+      "objective": "选择回头查看或继续前行",
+      "description": "后脖子有点凉。说不上是风还是别的。你没回头，路还在前头。",
+      "choices": [
+        {
+          "text": "回头瞅一眼。",
+          "next": "__结案__",
+          "conclusion_label": "异象记录"
+        },
+        {
+          "text": "不回头，接着走。",
+          "next": "scene_2",
+          "state": {},
+          "conclusion_label": null
+        }
+      ]
+    }
+  ]
+}

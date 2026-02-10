@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { loadSkeleton } from '@/game/skeleton'
-import { GameState, statLabel } from '@/game/state'
-import type { Skeleton, Node, Choice, StatKey } from '@/game/types'
-import { generateNodeNarrative, generateYishi } from '@/game/aiBridge'
+import { GameState } from '@/game/state'
+import type { Skeleton, Node } from '@/game/types'
+import { generateNodeNarrative, generateYishi, AI_DEBUG } from '@/game/aiBridge'
 import { getApiKey } from '@/config'
 import { NarrativeBox } from '@/components/NarrativeBox'
 import { StatusBox } from '@/components/StatusBox'
@@ -20,6 +20,8 @@ export default function App() {
   const [yishiLoading, setYishiLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [, setTick] = useState(0)
+  const [regenerating, setRegenerating] = useState(false)
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
   const forceUpdate = () => setTick((t) => t + 1)
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export default function App() {
         if (!cancelled) {
           setSkeleton(sk)
           setApiKey(key)
+          if (AI_DEBUG) console.log('[App] API key loaded:', key ? `yes (${key.slice(0, 8)}…)` : 'no')
           const g = new GameState(sk)
           g.startRealm()
           setGame(g)
@@ -45,38 +48,84 @@ export default function App() {
   }, [])
 
   const refreshNodeNarrative = useCallback(
-    async (node: Node) => {
-      if (!game || !apiKey || !node.truth_anchors?.length) return
-      const nid = node.node_id
-      if (cachedNarrative[nid] !== undefined) return
-      setNarrativeLoading(true)
-      try {
-        const stateFilter = {
-          ming_zhu: game.stats.ming_zhu,
-          gen_jiao: game.stats.gen_jiao,
-          jian_zhao: game.stats.jian_zhao,
-        }
-        const desc = await generateNodeNarrative(apiKey, node, game.realmName, stateFilter)
-        setCachedNarrative((prev) => ({ ...prev, [nid]: desc?.trim() || node.description }))
-        setCachedAiIsReal((prev) => ({ ...prev, [nid]: Boolean(desc?.trim()) }))
-      } finally {
-        setNarrativeLoading(false)
+    async (node: Node): Promise<string | null> => {
+      const hasPlotGuide = (node.plot_guide ?? node.truth_anchors)?.length
+      if (!game || !apiKey || !hasPlotGuide) return null
+      const stateFilter = {
+        ming_zhu: game.stats.ming_zhu,
+        gen_jiao: game.stats.gen_jiao,
+        jian_zhao: game.stats.jian_zhao,
       }
+      const desc = await generateNodeNarrative(apiKey, node, game.realmName, stateFilter, {
+        yishiEntries: game.yishiEntries,
+        choiceHistory: game.choiceHistory,
+      })
+      return desc?.trim() || node.description || null
     },
-    [game, apiKey, cachedNarrative]
+    [game, apiKey]
   )
+
+  // Must run on every render so hook order is stable (no hooks after early return)
+  const node = game?.getCurrentNode() ?? null
+  const currentNodeId = node?.node_id ?? null
+  const realmName = game?.realmName ?? ''
+  const useAi = Boolean(apiKey && (node?.plot_guide ?? node?.truth_anchors)?.length)
+
+  useEffect(() => {
+    if (loading || !skeleton || !game || !node || !useAi || !apiKey) return
+    const nid = node.node_id
+    if (cachedNarrative[nid] !== undefined) return
+
+    let cancelled = false
+    setNarrativeLoading(true)
+    if (AI_DEBUG) console.log('[App] Trigger AI narrative for node:', nid)
+    refreshNodeNarrative(node)
+      .then((desc) => {
+        if (!cancelled) {
+          setCachedNarrative((prev) => ({ ...prev, [nid]: desc || node.description }))
+          setCachedAiIsReal((prev) => ({ ...prev, [nid]: Boolean(desc?.trim()) }))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setNarrativeLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [loading, skeleton, game, currentNodeId, useAi, apiKey, node, refreshNodeNarrative, cachedNarrative])
+
+  const handleRegenerateGenerated = async () => {
+    if (!window.electronAPI?.regenerateGenerated || regenerating) return
+    setRegenerateError(null)
+    setRegenerating(true)
+    try {
+      const result = await window.electronAPI.regenerateGenerated('prologue')
+      if (result.ok) window.location.reload()
+      else setRegenerateError(result.error ?? '生成失败')
+    } catch (e) {
+      setRegenerateError(e instanceof Error ? e.message : '生成失败')
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   if (loading || !skeleton || !game) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4">
         {error ? <p className="text-red-400">{error}</p> : <p className="text-stone-400">加载中…</p>}
+        {window.electronAPI?.isElectron && (
+          <button
+            type="button"
+            onClick={handleRegenerateGenerated}
+            disabled={regenerating}
+            className="text-sm px-3 py-1.5 rounded border border-stone-600 bg-stone-800 text-stone-400 hover:bg-stone-700 disabled:opacity-50"
+          >
+            {regenerating ? '生成中…' : '重新生成内容'}
+          </button>
+        )}
+        {regenerateError && <p className="text-red-400 text-sm">{regenerateError}</p>}
       </div>
     )
   }
 
-  const node = game.getCurrentNode()
-  const realmName = game.realmName
-  const useAi = Boolean(apiKey && node?.truth_anchors?.length)
   const narrativeContent = yishiLoading
     ? '正在凝练异史…'
     : node && useAi && cachedNarrative[node.node_id] !== undefined
@@ -86,11 +135,6 @@ export default function App() {
           ? '正在感应…'
           : node.description
         : ''
-
-  // Trigger AI fetch when entering a node that has truth_anchors and no cache yet
-  if (node && useAi && cachedNarrative[node.node_id] === undefined && !narrativeLoading) {
-    refreshNodeNarrative(node)
-  }
 
   const handleChoice = async (index: number) => {
     if (!node || index < 0 || index >= node.choices.length) return
@@ -124,8 +168,24 @@ export default function App() {
 
   return (
     <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-4 gap-4">
-      <header className="text-center py-2 border-b border-stone-700">
-        <h1 className="text-xl font-semibold text-stone-100">行旅 · Another History</h1>
+      <header className="text-center py-2 border-b border-stone-700 flex flex-col gap-2">
+        <div className="flex items-center justify-center gap-3">
+          <h1 className="text-xl font-semibold text-stone-100">行旅 · Another History</h1>
+          {window.electronAPI?.isElectron && (
+            <button
+              type="button"
+              onClick={handleRegenerateGenerated}
+              disabled={regenerating}
+              className="text-xs px-2 py-1 rounded border border-stone-600 bg-stone-800 text-stone-400 hover:bg-stone-700 hover:text-stone-300 disabled:opacity-50"
+              title="重新生成 generated 下全部内容（outline/nodes/texts/merged）并刷新"
+            >
+              {regenerating ? '生成中…' : '重新生成内容'}
+            </button>
+          )}
+        </div>
+        {regenerateError && (
+          <p className="text-red-400 text-sm">{regenerateError}</p>
+        )}
       </header>
 
       <NarrativeBox

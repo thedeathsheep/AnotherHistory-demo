@@ -1,4 +1,3 @@
-import React from 'react'
 import type { StatKey } from '@/game/types'
 import { statLabel } from '@/game/state'
 

@@ -8,8 +8,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build"
+    "electron:dev": "npx --yes kill-port 5173 5174 5175 && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build",
+    "generate:prologue": "node scripts/generate-chapter.mjs prologue",
+    "generate:prologue:force": "node scripts/generate-chapter.mjs prologue --force",
+    "generate": "node scripts/generate-chapter.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

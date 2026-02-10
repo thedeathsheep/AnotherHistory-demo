@@ -17,6 +17,7 @@ export interface Choice {
 
 export interface Node {
   node_id: string
+  plot_guide?: string[]
   truth_anchors?: string[]
   taboo?: string[]
   objective?: string

@@ -7,3 +7,10 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  electronAPI?: {
+    isElectron: true
+    regenerateGenerated: (chapterId?: string) => Promise<{ ok: boolean; error?: string }>
+  }
+}
