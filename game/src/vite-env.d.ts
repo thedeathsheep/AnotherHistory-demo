@@ -11,6 +11,7 @@ interface ImportMeta {
 interface Window {
   electronAPI?: {
     isElectron: true
+    getApiKey: () => Promise<string | null>
     regenerateGenerated: (chapterId?: string) => Promise<{ ok: boolean; error?: string }>
   }
 }

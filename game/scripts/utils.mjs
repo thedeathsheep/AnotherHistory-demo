@@ -76,8 +76,8 @@ export async function chat(apiKey, messages, maxTokens = 2048) {
 }
 
 function loadEnv() {
-  const envPath = resolvePath('.env')
-  if (fileExists(envPath)) {
+  for (const envPath of [resolvePath('.env'), resolvePath('..', '.env')]) {
+    if (!fileExists(envPath)) continue
     const content = readText(envPath)
     for (const line of content.split('\n')) {
       const m = line.match(/^\s*([^#=]+)=(.*)$/)
@@ -99,8 +99,11 @@ export function getApiKey() {
   } catch (_) {}
   const apiKeyPath = resolvePath('..', 'api_key.txt')
   if (fileExists(apiKeyPath)) {
-    const key = readText(apiKeyPath).trim().split('\n')[0]?.trim()
-    if (key?.startsWith('sk-')) return key
+    const text = readText(apiKeyPath)
+    const firstLine = text.trim().split('\n')[0]?.trim()
+    if (firstLine?.startsWith('sk-')) return firstLine
+    const match = text.match(/sk-[a-zA-Z0-9]+/)
+    if (match) return match[0]
   }
   return null
 }

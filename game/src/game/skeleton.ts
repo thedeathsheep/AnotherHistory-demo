@@ -22,10 +22,16 @@ async function loadSkeletonFile(path: string): Promise<Skeleton | null> {
   return (await res.json()) as Skeleton
 }
 
+/** Base URL for data files (works with Vite dev server and Electron file://) */
+function dataBase(): string {
+  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/'
+  if (typeof window === 'undefined') return base
+  return new URL(base, window.location.href).href
+}
+
 function dataUrl(p: string): string {
-  if (typeof window === 'undefined') return p
-  const base = window.location.origin
-  return base.endsWith('/') ? base + p.slice(1) : base + p
+  const path = p.startsWith('/') ? p.slice(1) : p
+  return dataBase().replace(/\/?$/, '/') + path
 }
 
 export async function loadSkeleton(): Promise<Skeleton> {

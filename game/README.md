@@ -22,13 +22,11 @@ npm install
 npm run dev
 ```
 
-打开 [http://localhost:5173](http://localhost:5173) 。若需 AI 生成，在项目根目录的 `api_key.txt` 中配置好 key 后，在 `game` 下新建 `.env`：
+打开 [http://localhost:5173](http://localhost:5173) 。若需 AI 生成，任选其一配置 API Key：
 
-```
-VITE_AIHUBMIX_API_KEY=sk-你的key
-```
-
-或新建 `public/config.json`（不要提交）：`{ "aihubmixApiKey": "sk-..." }`
+- **根目录或 game 下 .env**：`VITE_AIHUBMIX_API_KEY=sk-你的key`
+- **game/public/config.json**（不要提交）：`{ "aihubmixApiKey": "sk-..." }`
+- **根目录 api_key.txt**：文件内包含一行 `sk-...` 即可
 
 **桌面端（Electron）：**
 
@@ -49,13 +47,17 @@ docker compose up --build
 
 浏览器打开 [http://localhost:5173](http://localhost:5173) 即可。代码用 Git 同步到另一台机器后，同样执行 `docker compose up`，环境一致。Electron 桌面版仍需在本机安装 Node 后执行 `npm run electron:dev`。
 
-## 打包
+## 打包与生产运行
 
 ```bash
 npm run build
 ```
 
-产物在 `dist/`，可直接用静态服务器部署。Electron 打包可后续用 electron-builder 等接入。
+产物在 `dist/`。**Electron 生产模式**（加载 dist、读 .env/api_key 做运行时 AI）：
+
+```bash
+$env:NODE_ENV='production'; npx electron .
+```
 
 ## 内容生成流水线
 
@@ -68,7 +70,8 @@ npm run generate:prologue
 - **输入**：`design/总设定.md`、`design/AI功能设定/`、`design/序章大纲.md`
 - **输出**：`generated/chapters/prologue/`（outline、nodes、texts、merged）→ 自动写入 `public/data/prologue.json`
 - **去重**：输入 hash 相同时跳过该阶段，避免重复调用 API
-- **API Key**：同游戏运行时，使用 `VITE_AIHUBMIX_API_KEY` 或 `AIHUBMIX_API_KEY` 或 `public/config.json`
+- **API Key**：同游戏运行时，使用根或 game 下 `.env`、或 `public/config.json`、或根目录 `api_key.txt`
+- **仅合并不调 AI**：`npm run merge-only`（已有 nodes + texts 时）
 
 ## 目录
 
@@ -81,11 +84,6 @@ npm run generate:prologue
 | `public/data/skeleton.json` | 主内容骨架 |
 | `design/`                  | 策划输入、AI 功能设定 |
 | `scripts/`                 | 内容生成流水线（PIPE-1～7） |
-| `electron/main.cjs`         | Electron 主进程         |
-
-
-## 与原型对应关系
-
-- 核心循环与 prototype 一致：入界 → 叙事（骨架 + 可选 AI）→ 感应 → 抉择 → 结案（异史归档）。
-- API Key 通过 `VITE_AIHUBMIX_API_KEY` 或 `public/config.json` 提供，与 prototype 的 `api_key.txt` 二选一即可。
+| `electron/main.cjs`         | Electron 主进程（.env、API Key、重新生成） |
+| `项目结构说明.md`（仓库根）   | 目录与文件作用、过时项、数据流向           |
 

@@ -12,7 +12,8 @@
     "electron:build": "npm run build",
     "generate:prologue": "node scripts/generate-chapter.mjs prologue",
     "generate:prologue:force": "node scripts/generate-chapter.mjs prologue --force",
-    "generate": "node scripts/generate-chapter.mjs"
+    "generate": "node scripts/generate-chapter.mjs",
+    "merge-only": "node scripts/merge-only.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

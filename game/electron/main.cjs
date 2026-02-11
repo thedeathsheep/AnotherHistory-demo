@@ -1,9 +1,46 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const { spawn } = require('child_process')
 
 const isDev = process.env.NODE_ENV !== 'production'
 const appRoot = path.join(__dirname, '..')
+
+// Load .env: try game/.env first, then project root .env (so one .env at root works after pull)
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return
+  const content = fs.readFileSync(filePath, 'utf-8')
+  for (const line of content.split('\n')) {
+    const m = line.match(/^\s*([^#=]+)=(.*)$/)
+    if (m) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
+  }
+}
+loadEnvFile(path.join(appRoot, '.env'))
+loadEnvFile(path.join(appRoot, '..', '.env'))
+
+/** Read API key for renderer (live AI). Sources: env (.env already loaded above), config.json, api_key.txt */
+function getApiKeyFromDisk() {
+  const key = process.env.AIHUBMIX_API_KEY || process.env.VITE_AIHUBMIX_API_KEY
+  if (key && key.startsWith('sk-')) return key
+  try {
+    const cfgPath = path.join(appRoot, 'public', 'config.json')
+    if (fs.existsSync(cfgPath)) {
+      const data = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
+      if (data.aihubmixApiKey && data.aihubmixApiKey.startsWith('sk-')) return data.aihubmixApiKey
+    }
+  } catch (_) {}
+  const apiKeyPath = path.join(appRoot, '..', 'api_key.txt')
+  if (fs.existsSync(apiKeyPath)) {
+    const text = fs.readFileSync(apiKeyPath, 'utf-8')
+    const firstLine = text.trim().split('\n')[0]?.trim()
+    if (firstLine && firstLine.startsWith('sk-')) return firstLine
+    const match = text.match(/sk-[a-zA-Z0-9]+/)
+    if (match) return match[0]
+  }
+  return null
+}
+
+ipcMain.handle('get-api-key', () => getApiKeyFromDisk())
 
 ipcMain.handle('regenerate-generated', async (_event, chapterId = 'prologue') => {
   return new Promise((resolve) => {

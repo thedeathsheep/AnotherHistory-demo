@@ -9,21 +9,27 @@
         "荒野",
         "古道",
         "书箱",
-        "昏睡"
+        "沉重"
       ],
       "taboo": [],
-      "objective": "唤醒自我，理解环境",
-      "description": "你醒过来的时候，草还挂着露。脚边是一条踩出来的土路，背上的东西压得肩头发酸。天刚亮。",
+      "objective": "理解当前处境",
+      "description": "你站在荒野的边缘，阳光透过树梢洒下斑驳的光影。书箱压得你肩膀发酸，脚下是条古道，似乎通往未知的方向。",
       "choices": [
         {
-          "text": "拎拎肩上那包，沉。",
+          "text": "向前迈步，踏上草地。",
           "next": "scene_2",
           "state": {},
           "conclusion_label": null
         },
         {
-          "text": "先爬起来，瞅瞅四下。",
-          "next": "scene_2",
+          "text": "在这里停下，仔细观察周围。",
+          "next": "scene_3",
+          "state": {},
+          "conclusion_label": null
+        },
+        {
+          "text": "回头看看自己走过的路。",
+          "next": "scene_4",
           "state": {},
           "conclusion_label": null
         }
@@ -33,99 +39,89 @@
       "node_id": "scene_2",
       "plot_guide": [
         "草地",
-        "晴朗",
-        "安全",
-        "思索"
+        "天气",
+        "安全"
       ],
       "taboo": [],
-      "objective": "选择前行或休息",
-      "description": "眼前一片草，黄不拉几的，风一过沙沙响。日头挺好，前头还能瞅见路。",
+      "objective": "选择如何继续前行",
+      "description": "草地在微风中轻轻摇曳，阳光洒在地面，带来一丝温暖。你心中思索，是否应该停下脚步，感受这片宁静。",
       "choices": [
         {
-          "text": "往前蹚。",
+          "text": "继续沿着草地前行。",
           "next": "scene_3",
           "state": {},
           "conclusion_label": null
         },
         {
-          "text": "在草里坐会儿。",
-          "next": "__结案__",
-          "conclusion_label": "草地短暂休憩"
+          "text": "选择在草地上稍作停留。",
+          "next": "scene_5",
+          "state": {},
+          "conclusion_label": null
         }
       ]
     },
     {
       "node_id": "scene_3",
       "plot_guide": [
-        "树木",
-        "光影",
-        "前行",
-        "观察"
+        "观察",
+        "环境",
+        "线索"
       ],
       "taboo": [],
-      "objective": "观察树下光影",
-      "description": "路边有树，影子碎在地上，光一块一块的。你站住，没动。",
+      "objective": "寻找线索或栖息地",
+      "description": "四周静谧，偶尔传来几声鸟鸣。你环顾四周，寻找任何可能的线索，心中暗自希望能找到栖息之地。",
       "choices": [
         {
-          "text": "凑过去，看看那影子。",
-          "next": "scene_4",
+          "text": "拿起笔，记录下所见的细节。",
+          "next": "scene_5",
           "state": {},
           "conclusion_label": null
-        },
-        {
-          "text": "不看，走。",
-          "next": "__结案__",
-          "conclusion_label": "光影未记录"
         }
       ]
     },
     {
       "node_id": "scene_4",
       "plot_guide": [
-        "树影",
-        "疑虑",
-        "记录",
-        "观察"
+        "回头",
+        "无形力量",
+        "禁忌"
       ],
-      "taboo": [],
-      "objective": "决定是否记录光影",
-      "description": "树影里的光在晃。你杵在那儿，想记，又有点懒。",
+      "taboo": [
+        "不可回头"
+      ],
+      "objective": "应对无形的力量",
+      "description": "你回头望去，身后似乎有一股无形的力量在召唤。心中一紧，禁忌的感觉涌上心头，迫使你思考下一步该如何应对。",
       "choices": [
         {
-          "text": "记一笔。",
-          "next": "scene_5",
+          "text": "深吸一口气，继续观察周围。",
+          "next": "scene_3",
           "state": {},
           "conclusion_label": null
         },
         {
-          "text": "不记，走人。",
-          "next": "__结案__",
-          "conclusion_label": "光影未记录"
+          "text": "不再回头，坚定地向前走。",
+          "next": "scene_5",
+          "state": {},
+          "conclusion_label": null
         }
       ]
     },
     {
       "node_id": "scene_5",
       "plot_guide": [
-        "警觉",
-        "回头",
-        "前行",
-        "异动"
+        "奇异痕迹",
+        "记录",
+        "入界"
       ],
       "taboo": [],
-      "objective": "选择回头查看或继续前行",
-      "description": "后脖子有点凉。说不上是风还是别的。你没回头，路还在前头。",
+      "objective": "记录入界的异象",
+      "description": "地面上留下奇异的痕迹，仿佛在诉说着什么。你知道，这一刻需要记录下这一切，才能为未来的旅途作准备。",
       "choices": [
         {
-          "text": "回头瞅一眼。",
+          "text": "将这一切细致地记录下来。",
           "next": "__结案__",
-          "conclusion_label": "异象记录"
-        },
-        {
-          "text": "不回头，接着走。",
-          "next": "scene_2",
           "state": {},
-          "conclusion_label": null
+          "conclusion_label": "第一条异史"
         }
       ]
     }
