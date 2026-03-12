@@ -7,3 +7,5 @@ public/config.json
 *.log
 .DS_Store
 generated/
+# 像素字体由 npm run copy-fonts（postinstall）从 @chinese-fonts/mzxst 复制
+public/fonts/

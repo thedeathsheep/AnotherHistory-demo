@@ -21,6 +21,8 @@ export interface Node {
   truth_anchors?: string[]
   taboo?: string[]
   objective?: string
+  /** One-sentence story beat for this node (from AI-2); used by AI-3 to generate description. */
+  story_beat?: string
   description: string
   choices: Choice[]
 }

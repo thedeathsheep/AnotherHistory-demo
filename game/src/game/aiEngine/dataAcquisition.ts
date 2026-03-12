@@ -24,6 +24,8 @@ export interface AIContext {
   taboo: string[]
   objective: string
   description: string
+  /** One-sentence story beat from skeleton (AI-2); rewrite as 1–2 sentence narrative when present. */
+  storyBeat?: string
   stateFilter: StateFilter
   statLabels: StatLabels
   realmName: string
@@ -99,6 +101,7 @@ export function buildContext(input: BuildContextInput): AIContext {
     taboo,
     objective,
     description: node.description,
+    storyBeat: node.story_beat,
     stateFilter,
     statLabels,
     realmName,

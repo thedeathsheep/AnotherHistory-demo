@@ -70,6 +70,8 @@ npm run generate:prologue
 - **去重**：输入 hash 相同时跳过该阶段，避免重复调用 API
 - **API Key**：同游戏运行时，使用 `VITE_AIHUBMIX_API_KEY` 或 `AIHUBMIX_API_KEY` 或 `public/config.json`
 
+**手写/手改文案**：若生成效果不理想，可直接编辑 `generated/chapters/prologue/texts.json`（或从 `design/examples/prologue_texts_example.json` 复制），再执行 `node scripts/merge-only.mjs prologue` 合并到 `public/data/prologue.json`，无需重新调 AI。
+
 ## 目录
 
 
@@ -83,6 +85,12 @@ npm run generate:prologue
 | `scripts/`                 | 内容生成流水线（PIPE-1～7） |
 | `electron/main.cjs`         | Electron 主进程         |
 
+
+## 界面与字体
+
+- **主字体**：凤凰点阵体 16px（Vonwaon Bitmap），本地文件 `public/fonts/VonwaonBitmap-16px.ttf`。`npm run copy-fonts`（或 `postinstall`）会尝试自动下载；若失败，请从 [itch.io](https://timothyqiu.itch.io/vonwaon-bitmap) 下载 16px 的 TTF，重命名为 `VonwaonBitmap-16px.ttf` 放入 `public/fonts/`。
+- **回退**：目哉像素体（MuzaiPixel）由 copy-fonts 从 `@chinese-fonts/mzxst` 复制到 `public/fonts/`；再回退 Noto Sans SC。字号使用 16px（凤凰点阵体设计尺寸），可在 `index.css` 的 `--dot-size` 改为 32px 放大。
+- **流程**：`npm install` 后自动执行 copy-fonts（复制目哉 + 下载凤凰）；单独执行 `npm run copy-fonts`；`npm run build` 会先 copy-fonts 再打包。
 
 ## 与原型对应关系
 

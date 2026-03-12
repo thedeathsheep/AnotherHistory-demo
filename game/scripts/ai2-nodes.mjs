@@ -13,7 +13,8 @@ export async function runAi2(apiKey, outline) {
 
   const system = `你是《行旅》的节点与游玩内容生成器。根据细纲输出 JSON 格式的 realm（节点+选项骨架）。
 必须严格输出合法的 JSON，不要任何解释或 markdown 代码块包裹。
-节点必须含 node_id、plot_guide、taboo、objective、description、choices。
+每个节点必须含 node_id、plot_guide、story_beat、taboo、objective、description、choices。
+story_beat 为必填：本节点的一句话情节点（如「醒来发现身在荒野，身边只有土路和行李」），与 outline 的 scene.summary 或 key_elements 对齐。
 description 可为空字符串；choices 每项含 text、next、可选 state、conclusion_label。
 next 为 "__结案__" 时表示结案分支。`
 

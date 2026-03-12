@@ -37,6 +37,7 @@
 
 - `node_id`：Prologue_01、Prologue_02 等，与 outline 的 scene 对应
 - `plot_guide`：来自 outline 的 key_elements，策划核心剧情导向
+- `story_beat`：**必填**。本节点的一句话情节点（如「醒来发现身在荒野，身边只有土路和行李」），与 outline 的 scene.summary 或 key_elements 对齐，供 AI-3 改写为具体叙事。
 - `taboo`：若大纲有禁忌（如不可回头），此处填写
 - `choices`：每个选项必须有 `text`（可为空）、`next`、可选 `state`、`conclusion_label`
 - `next: "__结案__"` 表示结案分支；此时 `text` 仍须为角色行动（如「记录下这一切」），**不可为 __结案__ 或技术占位符**
@@ -77,6 +78,7 @@
     {
       "node_id": "Prologue_01",
       "plot_guide": ["驿亭", "枯井", "书箱", "墨迹"],
+      "story_beat": "行者自昏睡中醒来，置身驿亭外，枯井在侧，书箱沉重。",
       "taboo": [],
       "objective": "理解当前处境",
       "description": "",
@@ -89,6 +91,7 @@
     {
       "node_id": "Prologue_02",
       "plot_guide": ["枯井", "井底异响", "影子"],
+      "story_beat": "靠近枯井，井底有异响，影子在动。",
       "taboo": ["不可直视井底过久", "不可回头"],
       "objective": "选择如何记录或应对",
       "description": "",
@@ -101,6 +104,7 @@
     {
       "node_id": "Prologue_02_bad",
       "plot_guide": ["影子", "衰败"],
+      "story_beat": "回头后触犯禁忌，影子异动，陷入衰败。",
       "taboo": [],
       "description": "",
       "choices": [

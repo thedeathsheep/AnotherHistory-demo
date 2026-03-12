@@ -27,6 +27,7 @@ function buildStateEffects(statLabels: AIContext['statLabels']): string[] {
 export function buildNarrativeUserPrompt(ctx: AIContext): string {
   const sections: string[] = [
     `【境遇】${ctx.realmName}`,
+    ctx.storyBeat ? `【情节点】将以下情节点改写为 1–2 句具体叙事（只写动作/物象/身体反应）：${ctx.storyBeat}` : '',
     ctx.plotGuide.length
       ? `【核心剧情导向】策划给定的关键词/剧情要求，若有则自然融入描述：${JSON.stringify(ctx.plotGuide)}`
       : '',

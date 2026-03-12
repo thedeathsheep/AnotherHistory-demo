@@ -2,10 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 凤凰点阵体 16px 本地（public/fonts/VonwaonBitmap-16px.ttf），fallback 目哉 / Noto Sans SC */
+@font-face {
+  font-family: "Vonwaon Bitmap 16px";
+  src: url("/fonts/VonwaonBitmap-16px.ttf") format("truetype");
+  font-display: swap;
+}
+
+/* Undertale-style UI：白框线、黑底、黄强调；主字体 凤凰点阵体 16px */
+
+:root {
+  /* 背景与面板 */
+  --dot-bg: #0c0c0c;
+  --dot-panel: #0f0f0f;
+  /* Undertale 框线：外缘深色 + 主框白色 */
+  --ui-frame-outer: #1a1a1a;
+  --ui-frame: #ffffff;
+  --ui-frame-width: 3px;
+  /* 文字 */
+  --dot-text: #ffffff;
+  --dot-muted: #aaaaaa;
+  /* Undertale 黄：选中/悬停强调 */
+  --dot-accent: #ffff00;
+  --dot-accent-dim: #c4c400;
+  --dot-size: 16px;   /* 凤凰点阵体设计尺寸，可改为 32px 放大 */
+  --dot-gap: 6px;
+}
+
+/* 统一 UI 框：双层框线（外深内白），直角 */
+.ui-frame {
+  border: var(--ui-frame-width) solid var(--ui-frame);
+  outline: 1px solid var(--ui-frame-outer);
+  outline-offset: -1px;
+  background: var(--dot-panel);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* Undertale 风格按钮：白框、黑底、悬停黄框或反白 */
+.ui-btn {
+  border: var(--ui-frame-width) solid var(--ui-frame);
+  background: var(--dot-bg);
+  color: var(--dot-text);
+  transition: border-color 0.1s ease, background 0.1s ease, color 0.1s ease;
+}
+.ui-btn:hover:not(:disabled) {
+  border-color: var(--dot-accent);
+  background: var(--dot-panel);
+  color: var(--dot-accent);
+}
+.ui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ui-btn-active,
+.ui-btn:focus-visible {
+  border-color: var(--dot-accent);
+  color: var(--dot-accent);
+}
+
 body {
-  @apply bg-stone-950 text-stone-200 font-serif antialiased;
+  font-family: "Vonwaon Bitmap 16px", MuzaiPixel, "Noto Sans SC", sans-serif;
+  font-size: var(--dot-size);
+  line-height: 1.6;
+  background: var(--dot-bg);
+  color: var(--dot-text);
+  -webkit-font-smoothing: none;
+  letter-spacing: 0.03em;
+}
+
+/* 点阵背景：极弱网格，不抢框线 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle at center, var(--ui-frame-outer) 1px, transparent 1px);
+  background-size: var(--dot-gap) var(--dot-gap);
+  background-repeat: repeat;
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
-  @apply min-h-screen flex flex-col;
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 强制 #root 下统一字体（覆盖 Tailwind Preflight） */
+#root,
+#root * {
+  font-family: "Vonwaon Bitmap 16px", MuzaiPixel, "Noto Sans SC", sans-serif !important;
+}
+
+img, canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 隐藏滚动条，仍可滚轮/触控滚动（用于选择区等） */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
 }
