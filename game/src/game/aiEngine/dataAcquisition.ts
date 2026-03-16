@@ -3,7 +3,8 @@
  * Aligns with GDD 5.5 / TODO AI-E1, AI-E2, AI-E3, AI-E4.
  */
 
-import type { Node, Choice, StatKey } from '@/game/types'
+import type { Node, Choice, StatKey, HaiId } from '@/game/types'
+import { HAI_IDS } from '@/game/types'
 import { statLabel } from '@/game/state'
 
 export interface StateFilter {
@@ -31,7 +32,8 @@ export interface AIContext {
   realmName: string
   yishiSummary: string
   choiceHistorySummary: string
-  /** Placeholder for future: hais, items, clues */
+  /** 害强度，用于感官滤镜 */
+  hais: Record<HaiId, number>
 }
 
 const CHARS_PER_TOKEN = 2
@@ -72,6 +74,7 @@ export interface BuildContextInput {
   node: Node
   realmName: string
   stats: Record<StatKey, number>
+  hais?: Record<HaiId, number>
   yishiEntries: string[]
   choiceHistory: Choice[]
 }
@@ -81,7 +84,7 @@ export interface BuildContextInput {
  * AI-E1, AI-E2
  */
 export function buildContext(input: BuildContextInput): AIContext {
-  const { node, realmName, stats, yishiEntries, choiceHistory } = input
+  const { node, realmName, stats, hais = {}, yishiEntries, choiceHistory } = input
   const plotGuide = node.plot_guide ?? node.truth_anchors ?? []
   const taboo = node.taboo ?? []
   const objective = node.objective ?? ''
@@ -95,6 +98,9 @@ export function buildContext(input: BuildContextInput): AIContext {
     gen_jiao: statLabel('gen_jiao', stats.gen_jiao),
     jian_zhao: statLabel('jian_zhao', stats.jian_zhao),
   }
+  const haisRecord: Record<HaiId, number> = Object.fromEntries(
+    HAI_IDS.map((k) => [k, (hais as Record<HaiId, number>)?.[k] ?? 0])
+  ) as Record<HaiId, number>
   return {
     nodeId: node.node_id,
     plotGuide,
@@ -107,5 +113,6 @@ export function buildContext(input: BuildContextInput): AIContext {
     realmName,
     yishiSummary: getYishiSummary(yishiEntries, 200),
     choiceHistorySummary: getChoiceHistorySummary(choiceHistory),
+    hais: haisRecord,
   }
 }

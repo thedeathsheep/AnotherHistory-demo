@@ -1,7 +1,7 @@
 /**
- * Yishi (异史)凝练 prompt builder.
+ * Yishi (异史) prompt builder.
  * Aligns with GDD 5.5 / TODO AI-E14, AI-E22.
- * Supports conclusion_label, choice summary, core facts, optional tags [真史][疑伪][秽].
+ * Supports conclusion_label, choice summary, core facts, required tags [真史][疑伪][秽].
  */
 
 export interface YishiPromptInput {
@@ -15,17 +15,30 @@ export function buildYishiUserPrompt(input: YishiPromptInput): string {
   const { realmName, choiceSummary, conclusionLabel, coreFacts } = input
   const coreLine =
     coreFacts?.length
-      ? `【必须包含】异史中应自然融入以下 2–3 个事实：${coreFacts.join('、')}\n\n`
+      ? `【必须包含】异史中应自然融入以下事实：${coreFacts.join('、')}\n\n`
       : ''
-  return `将以下行旅记录凝练为一段「异史」。极简白描，不铺陈不比喻；禁止浅白句与抽象句（渐渐、感受到、内心觉察、思绪游走、宁静的环境等），只写具体人事。奇诡与烟火气并置，内敛含蓄。质朴半文言纪传体，时间地点人物事件；以「记之曰」收束；第三人称，不超过100字。
+  return `将以下行旅撰写为一段异史。体例为明代文言笔记，仿《聊斋志异》《阅微草堂笔记》风格。
 
 【地域】${realmName}
 【行旅概要】
 ${choiceSummary}
-${coreLine}结尾以「记之曰：${conclusionLabel}。」收束。
-可选：若判定为疑伪或秽史，可在正文前加 [疑伪] 或 [秽]；确认为真史可加 [真史]。默认不标。
-只输出异史正文（可含标签），不要解释。`
+${coreLine}【文体要求】
+- 纯正文言，不用白话。句式简洁，以四字、六字为主，少用长句。
+- 不用「渐渐」「感受到」「内心」等白话词汇；不用「思绪」「心在」等抽象主语。
+- 以干支纪年（如「乙巳年」），地点在前，人物次之，事件在后。
+- 结尾用「记之曰」引出结论，结论为四至六字概括。
+- 第三人称，全文不超过八十言。
+
+【示例】
+乙巳春，有行者过永宁驿，入而不出。驿人云：是夜闻马蹄声，晨起视之，空无一物。记之曰：驿中失迹。
+
+【标签】根据行旅性质，正文前加以下标签之一：
+- [真史]：确有其事
+- [疑伪]：传闻未证
+- [秽]：涉及禁忌灾异
+
+结尾以「记之曰：${conclusionLabel}。」收束。只输出正文（含标签），不要解释。`
 }
 
 export const YISHI_SYSTEM =
-  '你只输出异史正文。极简白描；禁止浅白句与抽象句（渐渐、感受到、内心觉察、思绪游走、宁静的环境）、比喻句；只写具体人事。质朴半文言纪传体，以记之曰收束。不要任何解释或标题。用中文。'
+  '你撰写明代文言笔记体异史。纯正文言，句式简洁（四六字为主），不用白话词汇。以干支纪年，地点在前，人物次之，事件在后。结尾用「记之曰」引出四至六字结论。全文不超过八十言。正文前必须加 [真史]、[疑伪] 或 [秽] 之一。不要任何解释或标题。'

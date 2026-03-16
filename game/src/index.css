@@ -110,3 +110,11 @@ img, canvas {
 .scrollbar-hidden::-webkit-scrollbar {
   display: none;
 }
+
+/* 鉴照关键词高亮：*主高亮* 用黄，[次高亮] 用灰黄 */
+.keyword-highlight {
+  color: var(--dot-accent);
+}
+.keyword-highlight-secondary {
+  color: var(--dot-accent-dim);
+}

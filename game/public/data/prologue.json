@@ -1,132 +1,248 @@
 {
   "id": "prologue",
-  "name": "序章",
+  "name": "序章·失落的信使",
   "entry_node": "scene_1",
   "nodes": [
     {
       "node_id": "scene_1",
-      "plot_guide": [
-        "荒野",
-        "古道",
-        "书箱",
-        "昏睡"
-      ],
+      "plot_guide": ["荒野", "古道", "书箱", "昏睡", "遗忘"],
+      "story_beat": "在荒野醒来，不知自己是谁，只背着一只书箱",
       "taboo": [],
-      "objective": "唤醒自我，理解环境",
-      "description": "你醒过来的时候，草还挂着露。脚边是一条踩出来的土路，背上的东西压得肩头发酸。天刚亮。",
+      "objective": "唤醒自我，理解处境",
+      "description": "你醒过来的时候，*草*还挂着露。脚边是一条踩出来的土路，背上的东西压得肩头发酸。天刚亮。你不知道自己是谁，也不知道要去哪儿。",
       "choices": [
-        {
-          "text": "拎拎肩上那包，沉。",
-          "next": "scene_2",
-          "state": {},
-          "conclusion_label": null
-        },
-        {
-          "text": "先爬起来，瞅瞅四下。",
-          "next": "scene_2",
-          "state": {},
-          "conclusion_label": null
-        }
+        { "text": "卸下背上的东西看看。", "next": "scene_2", "state": {} },
+        { "text": "先爬起来，瞅瞅四下。", "next": "scene_3", "state": {} }
       ]
     },
     {
       "node_id": "scene_2",
-      "plot_guide": [
-        "草地",
-        "晴朗",
-        "安全",
-        "思索"
-      ],
+      "plot_guide": ["书箱", "信札", "墨迹", "困惑"],
+      "story_beat": "发现一只旧书箱，里面有几封信",
       "taboo": [],
-      "objective": "选择前行或休息",
-      "description": "眼前一片草，黄不拉几的，风一过沙沙响。日头挺好，前头还能瞅见路。",
+      "objective": "检视书箱中的物品",
+      "description": "你把背上的东西卸下来。是一只旧书箱，皮面龟裂。打开，里面躺着三封*信札*，墨迹模糊。还有一方砚台，一块残墨。",
       "choices": [
-        {
-          "text": "往前蹚。",
-          "next": "scene_3",
-          "state": {},
-          "conclusion_label": null
-        },
-        {
-          "text": "在草里坐会儿。",
-          "next": "__结案__",
-          "conclusion_label": "草地短暂休憩"
-        }
+        { "text": "拿起信札辨认字迹。", "next": "scene_4", "state": {} },
+        { "text": "收好箱子，起身赶路。", "next": "scene_3", "state": {}, "gain_item": ["旧书箱"] }
       ]
     },
     {
       "node_id": "scene_3",
-      "plot_guide": [
-        "树木",
-        "光影",
-        "前行",
-        "观察"
-      ],
+      "plot_guide": ["荒野", "古道", "独行", "风向"],
+      "story_beat": "站在荒野中，古道向远处延伸",
       "taboo": [],
-      "objective": "观察树下光影",
-      "description": "路边有树，影子碎在地上，光一块一块的。你站住，没动。",
+      "objective": "决定前进方向",
+      "description": "你站起身。四周是荒野，草黄不拉几的，风一过沙沙响。一条古道往南，另一条岔路往东。日头升起来了。",
       "choices": [
-        {
-          "text": "凑过去，看看那影子。",
-          "next": "scene_4",
-          "state": {},
-          "conclusion_label": null
-        },
-        {
-          "text": "不看，走。",
-          "next": "__结案__",
-          "conclusion_label": "光影未记录"
-        }
+        { "text": "沿古道往南走。", "next": "scene_5", "state": {} },
+        { "text": "走东边那条岔路。", "next": "scene_6", "state": {} },
+        { "text": "在这儿坐一会儿。", "next": "__结案__", "conclusion_label": "荒野止步", "yishi_hint": "风停了。你坐在草地上，什么也不想……" }
       ]
     },
     {
       "node_id": "scene_4",
-      "plot_guide": [
-        "树影",
-        "疑虑",
-        "记录",
-        "观察"
-      ],
+      "plot_guide": ["信札", "信使", "驿站", "遗忘"],
+      "story_beat": "辨认信札，发现是送往驿站的书信",
       "taboo": [],
-      "objective": "决定是否记录光影",
-      "description": "树影里的光在晃。你杵在那儿，想记，又有点懒。",
+      "objective": "理解信札的内容",
+      "description": "你拿起信札。封口已破，纸色泛黄。勉强辨认出几个字：「驿……急递……乙巳年……」落款模糊，只隐约是个官印。你忽然意识到：自己可能是个*信使*。",
       "choices": [
-        {
-          "text": "记一笔。",
-          "next": "scene_5",
-          "state": {},
-          "conclusion_label": null
-        },
-        {
-          "text": "不记，走人。",
-          "next": "__结案__",
-          "conclusion_label": "光影未记录"
-        }
+        { "text": "把信收好，继续赶路。", "next": "scene_3", "state": {}, "gain_item": ["残破信札"], "gain_clue": ["信使身份"] },
+        { "text": "把信扔了，不想管这些。", "next": "scene_3", "state": { "ming_zhu": -5 } }
       ]
     },
     {
       "node_id": "scene_5",
-      "plot_guide": [
-        "警觉",
-        "回头",
-        "前行",
-        "异动"
-      ],
+      "plot_guide": ["古道", "驿站", "残垣", "傍晚"],
+      "story_beat": "沿古道前行，发现一座废弃驿站",
       "taboo": [],
-      "objective": "选择回头查看或继续前行",
-      "description": "后脖子有点凉。说不上是风还是别的。你没回头，路还在前头。",
+      "objective": "探索驿站",
+      "description": "古道弯弯曲曲，走了大半天，日头偏西。路边出现一座*废弃驿站*，旗杆断了半截，门匾上「永宁驿」三字还勉强能认。",
       "choices": [
-        {
-          "text": "回头瞅一眼。",
-          "next": "__结案__",
-          "conclusion_label": "异象记录"
-        },
-        {
-          "text": "不回头，接着走。",
-          "next": "scene_2",
-          "state": {},
-          "conclusion_label": null
-        }
+        { "text": "进去看看。", "next": "scene_7", "state": {} },
+        { "text": "绕过去，继续赶路。", "next": "scene_10", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_6",
+      "plot_guide": ["岔路", "树林", "阴影", "不安"],
+      "story_beat": "岔路通向一片幽暗的树林",
+      "taboo": ["不可进入深林"],
+      "objective": "决定是否进入树林",
+      "description": "岔路通向一片树林。树影密集，光线暗下来。你感到一阵*不安*，像有人在背后盯着。",
+      "choices": [
+        { "text": "硬着头皮走进去。", "next": "scene_8", "state": {}, "hai_delta": { "ling_sun": 20 } },
+        { "text": "不对劲，回古道去。", "next": "scene_5", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_7",
+      "plot_guide": ["驿站", "废墟", "痕迹", "发现"],
+      "story_beat": "进入驿站，发现有人停留过的痕迹",
+      "taboo": [],
+      "objective": "搜索驿站内的线索",
+      "description": "驿站里空荡荡的，桌椅残破。地上有*灰烬*，像是生过火。角落里有张破席子，席子下露出一只*布包*。",
+      "choices": [
+        { "text": "翻开席子看看布包。", "next": "scene_9", "state": {} },
+        { "text": "搜搜其他房间。", "next": "scene_11", "state": {} },
+        { "text": "这里不对劲，离开。", "next": "scene_10", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_8",
+      "plot_guide": ["树林", "迷途", "幻觉", "灵损"],
+      "story_beat": "在树林中迷路，出现幻觉",
+      "taboo": [],
+      "objective": "寻找出路",
+      "description": "林子里越来越暗。你走着走着，发现自己在原地打转。前面有个*人影*，回头一看，却什么都没有。脑海中闪过一些不属于自己的记忆。",
+      "choices": [
+        { "text": "跟着人影走。", "next": "scene_12", "state": {}, "hai_delta": { "ling_sun": 30 } },
+        { "text": "闭上眼，静下心来。", "next": "scene_13", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_9",
+      "plot_guide": ["布包", "印信", "官府", "关联"],
+      "story_beat": "发现一个官府印信",
+      "taboo": [],
+      "objective": "确认布包内容",
+      "description": "席子下的布包里有一枚*铜印*，刻着「急递铺」三字。还有一叠未送出的文书，纸张完好。这些东西和你书箱里的信札似乎有关联。",
+      "choices": [
+        { "text": "把印信和文书收好。", "next": "scene_11", "state": {}, "gain_item": ["铜印", "未送文书"], "gain_clue": ["急递铺信使"] },
+        { "text": "只拿文书，印信太沉。", "next": "scene_11", "state": {}, "gain_item": ["未送文书"] }
+      ]
+    },
+    {
+      "node_id": "scene_10",
+      "plot_guide": ["古道", "夜色", "村庄", "灯火"],
+      "story_beat": "继续赶路，夜色中看见远处灯火",
+      "taboo": [],
+      "objective": "决定是否前往灯火处",
+      "description": "你继续沿古道走。天黑下来，远处有*灯火*，像是个村庄。风中隐约传来人声。",
+      "choices": [
+        { "text": "去村庄借宿。", "next": "scene_14", "state": {} },
+        { "text": "在路边将就一晚。", "next": "scene_15", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_11",
+      "plot_guide": ["驿站", "密室", "真相", "档案"],
+      "story_beat": "在驿站深处发现一份档案",
+      "taboo": [],
+      "objective": "查阅档案了解真相",
+      "description": "你搜到一间偏房，里面有只木匣。匣中是一份*档案*，记载着「乙巳年春，急递铺信使某，失踪于永宁驿附近，查无下落」。档案边上还有几行批注，字迹潦草。",
+      "choices": [
+        { "text": "仔细阅读批注。", "next": "scene_16", "state": {}, "gain_clue": ["失踪真相"] },
+        { "text": "带上档案离开驿站。", "next": "scene_10", "state": {}, "gain_item": ["信使档案"] }
+      ]
+    },
+    {
+      "node_id": "scene_12",
+      "plot_guide": ["幻觉", "深林", "迷失", "代价"],
+      "story_beat": "跟随着幻觉，越陷越深",
+      "taboo": [],
+      "objective": "挣扎着寻找出路",
+      "description": "你跟着人影走，越走越深。周围的声音开始混乱，分不清是风声还是人语。你感到*自己*在消散，记忆像沙子一样从指缝流失。",
+      "choices": [
+        { "text": "拼命往回跑。", "next": "scene_5", "state": {}, "hai_delta": { "ling_sun": 20 } },
+        { "text": "放弃挣扎，随它去吧。", "next": "__结案__", "conclusion_label": "林中迷失", "hai_delta": { "ling_sun": 50 }, "yishi_hint": "林中起了雾。你不想动了……" }
+      ]
+    },
+    {
+      "node_id": "scene_13",
+      "plot_guide": ["树林", "觉醒", "记忆", "身份"],
+      "story_beat": "静心之后，记忆浮现",
+      "taboo": [],
+      "objective": "回忆起自己的身份",
+      "description": "你闭上眼，让呼吸慢下来。混乱的声音渐渐退去。脑海中浮现出一些画面：一个驿站，一封急件，一场*变故*。你想起来了——你是急递铺的信使，那年春天，你在永宁驿附近失踪。",
+      "choices": [
+        { "text": "这是怎么回事？我得回去。", "next": "scene_5", "state": {}, "gain_clue": ["自我觉醒"] },
+        { "text": "记起来了……但我不想回去。", "next": "__结案__", "conclusion_label": "林中觉醒", "yishi_hint": "往事如烟。你睁开眼，林子还是林子……" }
+      ]
+    },
+    {
+      "node_id": "scene_14",
+      "plot_guide": ["村庄", "客栈", "老人", "旧事"],
+      "story_beat": "来到村庄，遇到一位老人",
+      "taboo": [],
+      "objective": "向老人打听消息",
+      "description": "村庄不大，只有十几户人家。你敲开一户人家的门，开门的是个*老人*。他打量着你，目光落在你背上的书箱上，忽然神色一变。",
+      "choices": [
+        { "text": "请问，您知道永宁驿的事吗？", "next": "scene_17", "state": {} },
+        { "text": "我只是路过，想借宿一晚。", "next": "scene_18", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_15",
+      "plot_guide": ["荒野", "夜宿", "星空", "思索"],
+      "story_beat": "在荒野中过夜，仰望星空",
+      "taboo": [],
+      "objective": "整理思绪",
+      "description": "你在路边找了个避风的地方躺下。*星空*辽阔，你想起了信札上的「乙巳年」。那是多久以前？你不知道。也许很久，也许就在昨天。",
+      "choices": [
+        { "text": "明天继续赶路，找到永宁驿。", "next": "scene_5", "state": {} },
+        { "text": "这些事与我无关了。", "next": "__结案__", "conclusion_label": "荒野夜宿", "yishi_hint": "星斗流转。你闭上眼……" }
+      ]
+    },
+    {
+      "node_id": "scene_16",
+      "plot_guide": ["真相", "谋害", "掩盖", "抉择"],
+      "story_beat": "发现信使失踪背后的真相",
+      "taboo": [],
+      "objective": "理解真相并做出抉择",
+      "description": "批注写着：「此案疑有蹊跷，信使或为*谋害*，驿站有掩盖之嫌。然查无实据，遂搁置。」你心中一凛。原来你并非迷路，而是被害？",
+      "choices": [
+        { "text": "我要查清这件事。", "next": "scene_14", "state": {}, "gain_clue": ["谋害嫌疑"] },
+        { "text": "真相已无意义。离开这里。", "next": "scene_10", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_17",
+      "plot_guide": ["老人", "回忆", "见证", "印证"],
+      "story_beat": "老人讲述当年的事",
+      "taboo": [],
+      "objective": "听取老人的证词",
+      "description": "老人沉默片刻，叹了口气。「那年春天，确实有个*信使*失踪了。我亲眼看见他进了驿站，再没见他出来。后来官府来查，也没查出个结果。」他看了看你，「你……和他很像。」",
+      "choices": [
+        { "text": "我就是那个信使。", "next": "scene_19", "state": {} },
+        { "text": "我只是个路人，巧合罢了。", "next": "scene_18", "state": {} }
+      ]
+    },
+    {
+      "node_id": "scene_18",
+      "plot_guide": ["村庄", "借宿", "平静", "隐匿"],
+      "story_beat": "在村庄借宿，选择隐匿身份",
+      "taboo": [],
+      "objective": "决定下一步",
+      "description": "老人没再多问，给你安排了一间空房。夜深了，窗外虫鸣。你躺在床上，脑海里还是那些模糊的画面。明天，你要继续走吗？",
+      "choices": [
+        { "text": "明天去驿站看看。", "next": "scene_5", "state": {} },
+        { "text": "留在这里，不再追究。", "next": "__结案__", "conclusion_label": "村庄隐匿", "yishi_hint": "窗外虫声渐歇。你不再想了……" }
+      ]
+    },
+    {
+      "node_id": "scene_19",
+      "plot_guide": ["承认", "真相", "了结", "归去"],
+      "story_beat": "承认自己的身份，寻求了结",
+      "taboo": [],
+      "objective": "完成未竟的使命",
+      "description": "老人听完你的话，沉默良久。「既是如此……那些信札，或许该有个去处。」他起身，从柜子里取出一只*布袋*，「这是我当年在驿站捡到的，不知有用没用。」",
+      "choices": [
+        { "text": "接过布袋，继续完成使命。", "next": "scene_20", "state": {}, "gain_item": ["老人布袋"] },
+        { "text": "这些年过去了，还有意义吗？", "next": "__结案__", "conclusion_label": "真相了结", "yishi_hint": "老人没说话。你也没说话……" }
+      ]
+    },
+    {
+      "node_id": "scene_20",
+      "plot_guide": ["使命", "终点", "释然", "异史"],
+      "story_beat": "完成信使的使命，故事落幕",
+      "taboo": [],
+      "objective": "将信札送达",
+      "description": "你接过布袋，里面是一些零散的纸片，和你的信札能对上。你忽然明白了自己的去处——把这些送到它们该去的地方。天亮了，你重新上路。",
+      "choices": [
+        { "text": "往南，去最近的急递铺。", "next": "__结案__", "conclusion_label": "使命完成", "yishi_hint": "天光大亮。你迈开步子……" },
+        { "text": "往北，回永宁驿看最后一眼。", "next": "__结案__", "conclusion_label": "故地重游", "yishi_hint": "北边的路，你记得。你走了回去……" }
       ]
     }
   ]

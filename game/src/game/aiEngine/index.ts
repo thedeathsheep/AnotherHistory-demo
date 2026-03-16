@@ -3,11 +3,12 @@
  * Refactored from aiBridge; aligns with GDD 5.5, AI流水线与存储规范, TODO AI-E*.
  */
 
-import type { Node, Choice } from '@/game/types'
+import type { Node, Choice, HaiId } from '@/game/types'
 import { chat } from './chat'
 import { buildContext, type StateFilter } from './dataAcquisition'
 import { buildNarrativeUserPrompt, NARRATIVE_SYSTEM } from './prompts/narrative'
 import { buildYishiUserPrompt, YISHI_SYSTEM } from './prompts/yishi'
+import { buildChoicesUserPrompt, CHOICES_SYSTEM } from './prompts/choices'
 
 // Re-export for external use
 export { chat, AI_DEBUG } from './chat'
@@ -46,12 +47,13 @@ export async function generateNodeNarrative(
   node: Node,
   realmName: string,
   stateFilter: StateFilter,
-  options?: { yishiEntries?: string[]; choiceHistory?: Choice[] }
+  options?: { yishiEntries?: string[]; choiceHistory?: Choice[]; hais?: Record<HaiId, number> }
 ): Promise<string | null> {
   const ctx = buildContext({
     node,
     realmName,
     stats: stateFilter,
+    hais: options?.hais,
     yishiEntries: options?.yishiEntries ?? [],
     choiceHistory: options?.choiceHistory ?? [],
   })
@@ -74,4 +76,51 @@ export async function generateYishi(
     maxTokens: 256,
     label: 'generateYishi',
   })
+}
+
+/** Parsed AI choice: text + next only; state/hai_delta inherited from skeleton. */
+export interface AIGeneratedChoice {
+  text: string
+  next: string
+}
+
+/**
+ * Generate 1–2 additional choices for a node (AI-E15).
+ * Returns empty array on failure; caller merges with skeleton choices.
+ */
+export async function generateChoices(
+  apiKey: string,
+  node: Node,
+  realmName: string,
+  items: string[],
+  clues: string[]
+): Promise<AIGeneratedChoice[]> {
+  if (!node.choices?.length) return []
+  const user = buildChoicesUserPrompt({
+    plotGuide: node.plot_guide ?? node.truth_anchors ?? [],
+    taboo: node.taboo ?? [],
+    storyBeat: node.story_beat,
+    skeletonChoices: node.choices,
+    items,
+    clues,
+    realmName,
+  })
+  const result = await chat(apiKey, [{ role: 'system', content: CHOICES_SYSTEM }, { role: 'user', content: user }], {
+    maxTokens: 256,
+    label: 'generateChoices',
+  })
+  if (!result?.trim()) return []
+  try {
+    const parsed = JSON.parse(result) as unknown
+    const arr = Array.isArray(parsed) ? parsed : [parsed]
+    const validNexts = new Set(node.choices.map((c) => c.next).filter(Boolean))
+    return arr
+      .filter((x): x is AIGeneratedChoice => x && typeof x.text === 'string' && typeof x.next === 'string')
+      .filter((x) => validNexts.has(x.next))
+      .slice(0, 2)
+      .map((x) => ({ text: String(x.text).trim(), next: x.next }))
+      .filter((x) => x.text.length > 0)
+  } catch {
+    return []
+  }
 }

@@ -6,6 +6,7 @@
 export {
   generateNodeNarrative,
   generateYishi,
+  generateChoices,
   AI_DEBUG,
   type NodeContext,
   type StateFilter,

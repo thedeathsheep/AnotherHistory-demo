@@ -45,5 +45,11 @@ ${JSON.stringify(outline, null, 2)}
   }
 
   if (!realm.nodes?.length) throw new Error('AI-2 output has no nodes')
+
+  const missingStoryBeat = realm.nodes.filter((n) => !n.story_beat?.trim()).map((n) => n.node_id)
+  if (missingStoryBeat.length) {
+    throw new Error(`AI-2 output missing story_beat for nodes: ${missingStoryBeat.join(', ')}. Each node must have story_beat.`)
+  }
+
   return realm
 }

@@ -1,14 +1,18 @@
-import type { StatKey } from '@/game/types'
+import type { StatKey, HaiId } from '@/game/types'
+import { HAI_LABELS } from '@/game/types'
 import { statLabel } from '@/game/state'
 
 interface Props {
   stats: Record<StatKey, number>
+  /** 害强度，仅展示名称（不展示数值） */
+  hais?: Partial<Record<HaiId, number>>
   className?: string
   /** When true, render only the three stat spans (no ui-frame) for embedding in another bar */
   inline?: boolean
 }
 
-export function StatusBox({ stats, className = '', inline }: Props) {
+export function StatusBox({ stats, hais = {}, className = '', inline }: Props) {
+  const activeHais = (Object.entries(hais) as [HaiId, number][]).filter(([, v]) => (v ?? 0) > 0)
   const content = (
     <>
       <span className="text-[var(--dot-text)]">
@@ -20,6 +24,11 @@ export function StatusBox({ stats, className = '', inline }: Props) {
       <span className="text-[var(--dot-text)]">
         鉴照: {stats.jian_zhao}% [{statLabel('jian_zhao', stats.jian_zhao)}]
       </span>
+      {activeHais.map(([id]) => (
+        <span key={id} className="text-[var(--dot-muted)]">
+          【{HAI_LABELS[id]}】
+        </span>
+      ))}
     </>
   )
   if (inline) {

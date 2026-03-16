@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { loadSkeleton } from '@/game/skeleton'
-import { GameState } from '@/game/state'
-import type { Skeleton, Node } from '@/game/types'
-import { generateNodeNarrative, generateYishi, AI_DEBUG } from '@/game/aiBridge'
+import { GameState, statLabel, violatesTaboo } from '@/game/state'
+import { hasSave, loadSaveData, restoreGameState, saveGameState, clearSave } from '@/game/save'
+import { evaluateEnding, getEnding } from '@/game/endings'
+import type { Skeleton, Node, Choice } from '@/game/types'
+import { generateNodeNarrative, generateYishi, generateChoices, AI_DEBUG } from '@/game/aiBridge'
 import { getApiKey } from '@/config'
 import { NarrativeBox } from '@/components/NarrativeBox'
 import { StatusBox } from '@/components/StatusBox'
@@ -22,9 +24,10 @@ export default function App() {
   const [game, setGame] = useState<GameState | null>(null)
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [cachedNarrative, setCachedNarrative] = useState<Record<string, string>>({})
-  const [cachedAiIsReal, setCachedAiIsReal] = useState<Record<string, boolean>>({})
+  const [cachedAiChoices, setCachedAiChoices] = useState<Record<string, Choice[]>>({})
   const [loading, setLoading] = useState(true)
   const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const [choicesLoading, setChoicesLoading] = useState(false)
   const [yishiLoading, setYishiLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [, setTick] = useState(0)
@@ -32,9 +35,14 @@ export default function App() {
   const [regenerateError, setRegenerateError] = useState<string | null>(null)
   const [pendingYishi, setPendingYishi] = useState<string | null>(null)
   const [flyState, setFlyState] = useState<FlyState | null>(null)
+  const [dianPoRemovedIndex, setDianPoRemovedIndex] = useState<number | null>(null)
+  const [itemsCluesOpen, setItemsCluesOpen] = useState(false)
+  const [yishiHint, setYishiHint] = useState<string | null>(null)
   const pendingYishiRef = useRef<HTMLButtonElement>(null)
   const lastEntryRef = useRef<HTMLLIElement>(null)
   const forceUpdate = () => setTick((t) => t + 1)
+
+  const [pendingStartChoice, setPendingStartChoice] = useState<boolean | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -46,9 +54,13 @@ export default function App() {
           setSkeleton(sk)
           setApiKey(key)
           if (AI_DEBUG) console.log('[App] API key loaded:', key ? `yes (${key.slice(0, 8)}…)` : 'no')
-          const g = new GameState(sk)
-          g.startRealm()
-          setGame(g)
+          if (hasSave()) {
+            setPendingStartChoice(true)
+          } else {
+            const g = new GameState(sk)
+            g.startRealm()
+            setGame(g)
+          }
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load')
@@ -71,6 +83,7 @@ export default function App() {
       const desc = await generateNodeNarrative(apiKey, node, game.realmName, stateFilter, {
         yishiEntries: game.yishiEntries,
         choiceHistory: game.choiceHistory,
+        hais: game.hais,
       })
       return desc?.trim() || node.description || null
     },
@@ -81,11 +94,9 @@ export default function App() {
   const node = game?.getCurrentNode() ?? null
   const currentNodeId = node?.node_id ?? null
   const realmName = game?.realmName ?? ''
-  // Use runtime AI only when node has no batch/skeleton description (avoid overwriting merged copy)
+  // Use runtime AI when node has plot_guide and API key; skeleton description is fallback when AI fails
   const useAi = Boolean(
-    apiKey &&
-      (node?.plot_guide ?? node?.truth_anchors)?.length &&
-      !(node?.description?.trim())
+    apiKey && (node?.plot_guide ?? node?.truth_anchors)?.length
   )
 
   useEffect(() => {
@@ -99,8 +110,8 @@ export default function App() {
     refreshNodeNarrative(node)
       .then((desc) => {
         if (!cancelled) {
-          setCachedNarrative((prev) => ({ ...prev, [nid]: desc || node.description }))
-          setCachedAiIsReal((prev) => ({ ...prev, [nid]: Boolean(desc?.trim()) }))
+          const fallback = node.description?.trim() || node.story_beat || '（叙事加载失败）'
+          setCachedNarrative((prev) => ({ ...prev, [nid]: desc || fallback }))
         }
       })
       .finally(() => {
@@ -108,6 +119,31 @@ export default function App() {
       })
     return () => { cancelled = true }
   }, [loading, skeleton, game, currentNodeId, useAi, apiKey, node, refreshNodeNarrative, cachedNarrative])
+
+  useEffect(() => {
+    if (loading || !game || !node || !apiKey || !node.choices?.length) return
+    if (node && !game.canEnterNode(node)) return
+    const nid = node.node_id
+    if (cachedAiChoices[nid] !== undefined) return
+
+    let cancelled = false
+    setChoicesLoading(true)
+    if (AI_DEBUG) console.log('[App] Trigger AI choices for node:', nid)
+    generateChoices(apiKey, node, game.realmName, game.items, game.clues)
+      .then((aiChoices) => {
+        if (!cancelled && aiChoices.length > 0) {
+          const merged: Choice[] = aiChoices.map((ac) => {
+            const skeleton = node.choices.find((c) => c.next === ac.next) ?? node.choices[0]
+            return { ...skeleton, text: ac.text }
+          })
+          setCachedAiChoices((prev) => ({ ...prev, [nid]: merged }))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setChoicesLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [loading, game, node, apiKey, cachedAiChoices])
 
   const handleRegenerateGenerated = async () => {
     if (!window.electronAPI?.regenerateGenerated || regenerating) return
@@ -144,7 +180,50 @@ export default function App() {
     return () => cancelAnimationFrame(id)
   }, [flyState?.targetRect, flyState?.applyTarget])
 
-  if (loading || !skeleton || !game) {
+  const handleStartContinue = () => {
+    if (!skeleton) return
+    const data = loadSaveData()
+    if (!data) return
+    const g = restoreGameState(skeleton, data)
+    setGame(g)
+    setPendingStartChoice(false)
+  }
+
+  const handleStartNewGame = () => {
+    if (!skeleton) return
+    clearSave()
+    const g = new GameState(skeleton)
+    g.startRealm()
+    setGame(g)
+    setPendingStartChoice(false)
+  }
+
+  if (loading || !skeleton || (pendingStartChoice && !game)) {
+    if (pendingStartChoice && skeleton && !game) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+          <p className="text-stone-400" style={{ fontSize: 'var(--dot-size)' }}>检测到存档</p>
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={handleStartContinue}
+              className="ui-btn px-5 py-2"
+              style={{ fontSize: 'var(--dot-size)' }}
+            >
+              继续
+            </button>
+            <button
+              type="button"
+              onClick={handleStartNewGame}
+              className="ui-btn px-5 py-2"
+              style={{ fontSize: 'var(--dot-size)' }}
+            >
+              新游戏
+            </button>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4">
         {error ? <p className="text-red-400">{error}</p> : <p className="text-stone-400">加载中…</p>}
@@ -163,32 +242,50 @@ export default function App() {
     )
   }
 
+  if (!game) return null
+
+  const gateBlocked = node && !game.canEnterNode(node)
   const narrativeContent = yishiLoading
-    ? '正在凝练异史…'
-    : node && useAi && cachedNarrative[node.node_id] !== undefined
-      ? (cachedAiIsReal[node.node_id] ? '【AI 生成】\n\n' : '') + cachedNarrative[node.node_id]
-      : node
-        ? narrativeLoading
-          ? '正在感应…'
-          : node.description
-        : ''
+    ? (yishiHint || '正在整理行旅……')
+    : gateBlocked
+      ? '【无法进入】条件未满足，无法感应此境。'
+      : node && useAi && cachedNarrative[node.node_id] !== undefined
+        ? cachedNarrative[node.node_id]
+        : node
+          ? narrativeLoading
+            ? '正在感应…'
+            : node.description
+          : ''
+
+  const isConclusion = !node && game?.yishiEntries.length && !pendingYishi
+  const endingId = isConclusion ? evaluateEnding(game) : null
+  const ending = endingId ? getEnding(endingId) : null
 
   const showNarrativeContent =
     game?.isGameOver()
       ? '【命烛熄灭 / 根脚化外 / 鉴照障目】异史君已无法继续。游戏结束。'
       : !node && pendingYishi
-        ? `【凝练完成】异史已就。点击下方「写入卷轴」收入卷轴。\n\n${pendingYishi}`
-        : !node && game?.yishiEntries.length && !pendingYishi
-          ? '【结案】本段行旅已归档。异史已写入卷轴。'
-          : narrativeContent || '（无当前节点）'
+        ? `【撰写完成】异史已成。点击下方「收入卷轴」收入卷轴。\n\n${pendingYishi}`
+        : isConclusion && ending
+          ? `【${ending.title}】\n\n${ending.description}`
+          : isConclusion
+            ? '【结案】本段行旅已归档，异史已入卷轴。'
+            : narrativeContent || '（无当前节点）'
 
-  const handleChoice = async (index: number) => {
-    if (!node || index < 0 || index >= node.choices.length) return
-    const choice = node.choices[index]
+  const handleChoice = async (choice: Choice) => {
+    if (!node || !choice) return
+    const taboos = node.taboo ?? []
+    if (violatesTaboo(choice.text, taboos)) {
+      game.hais.ling_sun = Math.min(100, (game.hais.ling_sun ?? 0) + 50)
+      game.stats.ming_zhu = Math.max(0, game.stats.ming_zhu - 10)
+    }
     const { conclusionLabel } = game.applyChoice(choice)
+    saveGameState(game)
+    setDianPoRemovedIndex(null)
     forceUpdate()
 
     if (conclusionLabel) {
+      setYishiHint(choice.yishi_hint || null)
       setYishiLoading(true)
       try {
         const text = apiKey
@@ -196,8 +293,7 @@ export default function App() {
           : null
         const fallback = `乙巳年，${game.realmName}。有行者入，记之曰：${conclusionLabel}。`
         const final = text?.trim() || fallback
-        const entryText = text?.trim() ? '【AI 凝练】 ' + final : final
-        setPendingYishi(entryText)
+        setPendingYishi(final)
       } finally {
         setYishiLoading(false)
         forceUpdate()
@@ -209,6 +305,7 @@ export default function App() {
     if (!pendingYishi || !game || !pendingYishiRef.current) return
     const sourceRect = pendingYishiRef.current.getBoundingClientRect()
     game.addYishiEntry(pendingYishi)
+    saveGameState(game)
     setPendingYishi(null)
     setFlyState({ text: pendingYishi, sourceRect, targetRect: null, applyTarget: false })
     forceUpdate()
@@ -219,13 +316,32 @@ export default function App() {
   }
 
   const handleRestart = () => {
+    clearSave()
     const g = new GameState(skeleton)
     g.startRealm()
     setGame(g)
     setCachedNarrative({})
-    setCachedAiIsReal({})
+    setCachedAiChoices({})
     setPendingYishi(null)
     setFlyState(null)
+    setDianPoRemovedIndex(null)
+  }
+
+  const handleDianPo = () => {
+    if (!game || !node || game.stats.jian_zhao < 10) return
+    if (!game.consumeJianZhao(10)) return
+    const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
+    if (baseChoices.length <= 1) return
+    const taboos = node.taboo ?? []
+    const tabooIndices = baseChoices
+      .map((c, i) => (violatesTaboo(c.text, taboos) ? i : -1))
+      .filter((i) => i >= 0)
+    const idx =
+      tabooIndices.length > 0
+        ? tabooIndices[Math.floor(Math.random() * tabooIndices.length)]
+        : Math.floor(Math.random() * baseChoices.length)
+    setDianPoRemovedIndex(idx)
+    forceUpdate()
   }
 
   const showRestart =
@@ -257,9 +373,10 @@ export default function App() {
       <div className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_280px] gap-4 min-h-0">
         <div className="flex flex-col gap-4 min-h-0 min-w-0">
           <NarrativeBox
-            title={node ? `【境遇：${realmName}】` : yishiLoading ? '【凝练异史】' : realmName ? `【境遇：${realmName}】` : ''}
+            title={node ? `【境遇：${realmName}】` : yishiLoading ? '【撰写异史】' : realmName ? `【境遇：${realmName}】` : ''}
             content={showNarrativeContent}
             className="flex-1 min-h-[200px]"
+            jianZhaoLevel={game ? (statLabel('jian_zhao', game.stats.jian_zhao) as '清彻' | '混浊' | '障目') : undefined}
             reserveFooter={!node}
             footerAction={
               pendingYishi !== null ? (
@@ -268,11 +385,11 @@ export default function App() {
                   type="button"
                   onClick={handleWriteYishiToScroll}
                   onKeyDown={(e) => e.key === 'Enter' && handleWriteYishiToScroll()}
-                  aria-label="写入卷轴"
+                  aria-label="收入卷轴"
                   className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
                   style={{ fontSize: 'var(--dot-size)' }}
                 >
-                  写入卷轴
+                  收入卷轴
                 </button>
               ) : null
             }
@@ -283,14 +400,54 @@ export default function App() {
             className="ui-frame flex flex-col shrink-0 overflow-hidden"
             aria-label="选择区"
           >
-            <div className="flex justify-between items-center px-3 py-2 shrink-0 border-b border-[var(--ui-frame-outer)]">
-              <span
-                className="text-[var(--dot-muted)]"
-                style={{ fontSize: 'var(--dot-size)' }}
-              >
-                {node ? '【感应】' : ''}
-              </span>
-              <StatusBox stats={game.stats} inline />
+            <div className="flex flex-col gap-1 shrink-0 border-b border-[var(--ui-frame-outer)]">
+              <div className="flex justify-between items-center px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[var(--dot-muted)]"
+                    style={{ fontSize: 'var(--dot-size)' }}
+                  >
+                    {node ? '【感应】' : ''}
+                  </span>
+                  {node && game.stats.jian_zhao >= 10 && (
+                    <button
+                      type="button"
+                      onClick={handleDianPo}
+                      disabled={narrativeLoading || yishiLoading}
+                      className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] disabled:opacity-50"
+                      style={{ fontSize: 'var(--dot-size)' }}
+                      title="消耗 10% 鉴照，剔除一个选项"
+                    >
+                      点破
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setItemsCluesOpen((o) => !o)}
+                    className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)]"
+                    style={{ fontSize: 'var(--dot-size)' }}
+                    title="物证 / 线索"
+                  >
+                    物证/线索 {itemsCluesOpen ? '▼' : '▶'}
+                  </button>
+                  <StatusBox stats={game.stats} hais={game.hais} inline />
+                </div>
+              </div>
+              {itemsCluesOpen && (
+                <div className="px-3 pb-2 text-[var(--dot-muted)]" style={{ fontSize: 'var(--dot-size)' }}>
+                  {game.items.length > 0 || game.clues.length > 0 ? (
+                    <>
+                      {game.items.length > 0 && <span>物证：{game.items.join('、')}</span>}
+                      {game.items.length > 0 && game.clues.length > 0 && ' · '}
+                      {game.clues.length > 0 && <span>线索：{game.clues.join('、')}</span>}
+                    </>
+                  ) : (
+                    <span>（无物证/线索）</span>
+                  )}
+                </div>
+              )}
             </div>
             <div
               className="flex flex-col min-h-0 shrink-0"
@@ -307,13 +464,23 @@ export default function App() {
                     {game?.isGameOver() ? '重新开始' : '再玩一次'}
                   </button>
                 </div>
-              ) : node ? (
-                <ChoiceList
-                  choices={node.choices}
-                  onSelect={handleChoice}
-                  disabled={narrativeLoading || yishiLoading}
-                  className="flex-1 min-h-0 overflow-y-auto"
-                />
+              ) : node && !gateBlocked ? (() => {
+                const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
+                const filtered = baseChoices
+                  .map((c, i) => ({ choice: c, origIndex: i }))
+                  .filter(({ origIndex }) => origIndex !== dianPoRemovedIndex)
+                return (
+                  <ChoiceList
+                    choices={filtered.map((x) => x.choice)}
+                    onSelect={(fi) => handleChoice(filtered[fi].choice)}
+                    disabled={narrativeLoading || yishiLoading || choicesLoading}
+                    className="flex-1 min-h-0 overflow-y-auto"
+                  />
+                )
+              })() : gateBlocked ? (
+                <div className="flex-1 flex items-center justify-center text-[var(--dot-muted)]" style={{ fontSize: 'var(--dot-size)' }}>
+                  需满足条件方可继续
+                </div>
               ) : (
                 <div className="flex-1 min-h-0" aria-hidden />
               )}
