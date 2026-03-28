@@ -218,6 +218,44 @@ export default function App() {
     return () => cancelAnimationFrame(id)
   }, [flyState?.targetRect, flyState?.applyTarget])
 
+  const handleEnterRealm = useCallback(
+    (realmId: string) => {
+      if (!game) return
+      if (game.realmId === realmId) return
+      if (!game.enterRealm(realmId)) return
+      setCachedNarrative({})
+      setCachedAiChoices({})
+      setDianPoRemovedIndex(null)
+      setPendingYishi(null)
+      setYishiHint(null)
+      setFlyState(null)
+      setAcquireBanner(null)
+      if (acquireTimerRef.current) {
+        clearTimeout(acquireTimerRef.current)
+        acquireTimerRef.current = null
+      }
+      narrativeCtxRef.current.appendFact(`入界：${game.realmName}`)
+      saveGameState(game, activeSaveSlot)
+      setPanel(null)
+      forceUpdate()
+    },
+    [game, activeSaveSlot]
+  )
+
+  useEffect(() => {
+    return () => {
+      if (acquireTimerRef.current) clearTimeout(acquireTimerRef.current)
+    }
+  }, [])
+
+  const handleJingZheMisclick = useCallback(() => {
+    if (!game) return
+    game.hais.jing_zhe = Math.min(100, (game.hais.jing_zhe ?? 0) + 22)
+    game.stats.gen_jiao = Math.max(0, game.stats.gen_jiao - 4)
+    saveGameState(game, activeSaveSlot)
+    forceUpdate()
+  }, [game, activeSaveSlot])
+
   const handleStartContinue = () => {
     if (!skeleton) return
     const slot = findFirstOccupiedSlot()
@@ -445,36 +483,6 @@ export default function App() {
     refreshSaveSummaries()
   }
 
-  const handleEnterRealm = useCallback(
-    (realmId: string) => {
-      if (!game) return
-      if (game.realmId === realmId) return
-      if (!game.enterRealm(realmId)) return
-      setCachedNarrative({})
-      setCachedAiChoices({})
-      setDianPoRemovedIndex(null)
-      setPendingYishi(null)
-      setYishiHint(null)
-      setFlyState(null)
-      setAcquireBanner(null)
-      if (acquireTimerRef.current) {
-        clearTimeout(acquireTimerRef.current)
-        acquireTimerRef.current = null
-      }
-      narrativeCtxRef.current.appendFact(`入界：${game.realmName}`)
-      saveGameState(game, activeSaveSlot)
-      setPanel(null)
-      forceUpdate()
-    },
-    [game, activeSaveSlot]
-  )
-
-  useEffect(() => {
-    return () => {
-      if (acquireTimerRef.current) clearTimeout(acquireTimerRef.current)
-    }
-  }, [])
-
   const handleDianPo = () => {
     if (!game || !node || !canDianPo) return
     if (!game.consumeJianZhao(dianPoPct)) return
@@ -493,14 +501,6 @@ export default function App() {
 
   const showRestart =
     game?.isGameOver() || (!node && game?.yishiEntries.length && !pendingYishi)
-
-  const handleJingZheMisclick = useCallback(() => {
-    if (!game) return
-    game.hais.jing_zhe = Math.min(100, (game.hais.jing_zhe ?? 0) + 22)
-    game.stats.gen_jiao = Math.max(0, game.stats.gen_jiao - 4)
-    saveGameState(game, activeSaveSlot)
-    forceUpdate()
-  }, [game, activeSaveSlot])
 
   return (
     <div className="flex-1 flex flex-col max-w-6xl mx-auto w-full p-4 gap-4 min-h-0">
