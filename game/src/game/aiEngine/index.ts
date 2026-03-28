@@ -3,10 +3,11 @@
  * Refactored from aiBridge; aligns with GDD 5.5, AI流水线与存储规范, TODO AI-E*.
  */
 
-import type { Node, Choice, HaiId } from '@/game/types'
+import type { Node, Choice, HaiId, Item, Clue } from '@/game/types'
+import { violatesTaboo } from '@/game/state'
 import { chat } from './chat'
 import { buildContext, type StateFilter } from './dataAcquisition'
-import { buildNarrativeUserPrompt, NARRATIVE_SYSTEM } from './prompts/narrative'
+import { buildNarrativeUserPrompt, NARRATIVE_SYSTEM, narrativeMatchesPlotGuide } from './prompts/narrative'
 import { buildYishiUserPrompt, YISHI_SYSTEM } from './prompts/yishi'
 import { buildChoicesUserPrompt, CHOICES_SYSTEM } from './prompts/choices'
 
@@ -20,6 +21,7 @@ export {
   type StateFilter,
   type StatLabels,
 } from './dataAcquisition'
+export { narrativeMatchesPlotGuide } from './prompts/narrative'
 
 export interface NodeContext {
   node_id: string
@@ -38,40 +40,72 @@ export interface NarrativeInput {
   choiceHistory: Choice[]
 }
 
+export interface GenerateNarrativeOptions {
+  yishiEntryTexts?: string[]
+  choiceHistory?: Choice[]
+  hais?: Record<HaiId, number>
+  narrativeFactSummary?: string
+}
+
 /**
  * Generate narrative for a node. Returns null on API failure (caller should fallback to node.description).
- * AI-E24: fallback handled by App when desc is null.
+ * AI-E18: one retry if plot_guide keywords missing from output.
+ * AI-E19: one retry if narrative text includes taboo keywords (same rules as choice taboo).
  */
 export async function generateNodeNarrative(
   apiKey: string,
   node: Node,
   realmName: string,
   stateFilter: StateFilter,
-  options?: { yishiEntries?: string[]; choiceHistory?: Choice[]; hais?: Record<HaiId, number> }
+  options?: GenerateNarrativeOptions
 ): Promise<string | null> {
-  const ctx = buildContext({
-    node,
-    realmName,
-    stats: stateFilter,
-    hais: options?.hais,
-    yishiEntries: options?.yishiEntries ?? [],
-    choiceHistory: options?.choiceHistory ?? [],
-  })
-  const user = buildNarrativeUserPrompt(ctx)
-  const result = await chat(apiKey, [{ role: 'system', content: NARRATIVE_SYSTEM }, { role: 'user', content: user }], {
-    maxTokens: 400,
-    label: 'generateNodeNarrative',
-  })
-  return result ?? null
+  const plotGuide = node.plot_guide ?? node.truth_anchors ?? []
+  const run = async (extra: string): Promise<string | null> => {
+    const ctx = buildContext({
+      node,
+      realmName,
+      stats: stateFilter,
+      hais: options?.hais,
+      yishiEntryTexts: options?.yishiEntryTexts ?? [],
+      choiceHistory: options?.choiceHistory ?? [],
+      narrativeFactSummary: options?.narrativeFactSummary,
+    })
+    let user = buildNarrativeUserPrompt(ctx)
+    if (extra) user += `\n\n${extra}`
+    return chat(apiKey, [{ role: 'system', content: NARRATIVE_SYSTEM }, { role: 'user', content: user }], {
+      maxTokens: 400,
+      label: 'generateNodeNarrative',
+    })
+  }
+  let result = await run('')
+  let text = result?.trim() ?? ''
+  if (text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
+    const retry = await run(
+      '【重试】上一稿未体现核心剧情导向中的关键词。请改写，并至少自然融入其中一个导向词或禁忌相关物象（仍保持 1–2 句具体叙事）。'
+    )
+    if (retry?.trim()) text = retry.trim()
+  }
+  const taboos = node.taboo ?? []
+  if (text && taboos.length && violatesTaboo(text, taboos)) {
+    const list = taboos.map((t) => t.trim()).filter(Boolean).join('、')
+    const retryTaboo = await run(
+      list
+        ? `【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，禁止直接写出或明显指涉以下禁忌词：${list}。若本节点有核心剧情导向，仍须至少融入其中一个导向词。`
+        : '【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，避开节点禁忌。'
+    )
+    if (retryTaboo?.trim()) text = retryTaboo.trim()
+  }
+  return text || null
 }
 
 export async function generateYishi(
   apiKey: string,
   realmName: string,
   choiceSummary: string,
-  conclusionLabel: string
+  conclusionLabel: string,
+  coreFacts?: string[]
 ): Promise<string | null> {
-  const user = buildYishiUserPrompt({ realmName, choiceSummary, conclusionLabel })
+  const user = buildYishiUserPrompt({ realmName, choiceSummary, conclusionLabel, coreFacts })
   return chat(apiKey, [{ role: 'system', content: YISHI_SYSTEM }, { role: 'user', content: user }], {
     maxTokens: 256,
     label: 'generateYishi',
@@ -92,8 +126,9 @@ export async function generateChoices(
   apiKey: string,
   node: Node,
   realmName: string,
-  items: string[],
-  clues: string[]
+  items: Item[],
+  clues: Clue[],
+  requireItemThought?: boolean
 ): Promise<AIGeneratedChoice[]> {
   if (!node.choices?.length) return []
   const user = buildChoicesUserPrompt({
@@ -104,6 +139,7 @@ export async function generateChoices(
     items,
     clues,
     realmName,
+    requireItemThought,
   })
   const result = await chat(apiKey, [{ role: 'system', content: CHOICES_SYSTEM }, { role: 'user', content: user }], {
     maxTokens: 256,

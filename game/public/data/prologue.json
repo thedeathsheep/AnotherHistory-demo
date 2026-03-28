@@ -97,7 +97,7 @@
       "objective": "寻找出路",
       "description": "林子里越来越暗。你走着走着，发现自己在原地打转。前面有个*人影*，回头一看，却什么都没有。脑海中闪过一些不属于自己的记忆。",
       "choices": [
-        { "text": "跟着人影走。", "next": "scene_12", "state": {}, "hai_delta": { "ling_sun": 30 } },
+        { "text": "跟着人影走。", "next": "scene_12", "state": {}, "hai_delta": { "ling_sun": 30, "jing_zhe": 42 } },
         { "text": "闭上眼，静下心来。", "next": "scene_13", "state": {} }
       ]
     },

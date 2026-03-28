@@ -1,9 +1,52 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const { spawn } = require('child_process')
+
+function savesDir() {
+  const dir = path.join(app.getPath('userData'), 'saves')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+ipcMain.handle('write-save-slot', async (_event, slot, json) => {
+  try {
+    const p = path.join(savesDir(), `slot-${Number(slot)}.json`)
+    fs.writeFileSync(p, String(json), 'utf8')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+ipcMain.handle('read-save-slot', async (_event, slot) => {
+  try {
+    const p = path.join(savesDir(), `slot-${Number(slot)}.json`)
+    if (!fs.existsSync(p)) return null
+    return fs.readFileSync(p, 'utf8')
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('delete-save-slot', async (_event, slot) => {
+  try {
+    const p = path.join(savesDir(), `slot-${Number(slot)}.json`)
+    if (fs.existsSync(p)) fs.unlinkSync(p)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
 
 const isDev = process.env.NODE_ENV !== 'production'
 const appRoot = path.join(__dirname, '..')
+let appVersion = ''
+try {
+  appVersion = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8')).version || ''
+} catch {
+  // ignore
+}
 
 ipcMain.handle('regenerate-generated', async (_event, chapterId = 'prologue') => {
   return new Promise((resolve) => {
@@ -33,6 +76,7 @@ ipcMain.handle('regenerate-generated', async (_event, chapterId = 'prologue') =>
 
 function createWindow() {
   const win = new BrowserWindow({
+    title: appVersion ? `行旅 · Another History v${appVersion}` : '行旅 · Another History',
     width: 900,
     height: 700,
     show: false,

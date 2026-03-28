@@ -111,10 +111,69 @@ img, canvas {
   display: none;
 }
 
-/* 鉴照关键词高亮：*主高亮* 用黄，[次高亮] 用灰黄 */
+/* 鉴照关键词：清彻 — 鲜明高亮 */
+.jianzhao-highlight--clear-star {
+  color: var(--dot-accent);
+  text-shadow: 0 0 6px rgba(255, 255, 0, 0.45);
+  box-decoration-break: clone;
+  padding: 0 1px;
+}
+.jianzhao-highlight--clear-bracket {
+  color: var(--dot-accent-dim);
+  border-bottom: 1px solid var(--dot-accent-dim);
+}
+
+/* 混浊 — 弱化、略糊 */
+.jianzhao-highlight--turbid-star {
+  color: rgba(255, 255, 0, 0.55);
+  filter: blur(0.35px);
+  opacity: 0.92;
+}
+.jianzhao-highlight--turbid-bracket {
+  color: rgba(196, 196, 0, 0.5);
+  filter: blur(0.25px);
+}
+
+/* 兼容旧 class */
 .keyword-highlight {
   color: var(--dot-accent);
 }
 .keyword-highlight-secondary {
   color: var(--dot-accent-dim);
+}
+
+.jianzhao-highlight {
+  /* base hook if needed */
+}
+
+/* 【惊蛰】感应扰动：选项微抖；重度略强 */
+@keyframes jingzhe-jitter {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-1px, 1px);
+  }
+  40% {
+    transform: translate(1px, -1px);
+  }
+  60% {
+    transform: translate(-1px, -1px);
+  }
+  80% {
+    transform: translate(1px, 0);
+  }
+}
+
+.jingzhe-choice-li {
+  animation: jingzhe-jitter 0.35s ease-in-out infinite;
+}
+
+.jingzhe-choice-li--heavy {
+  animation-duration: 0.22s;
+}
+
+.jingzhe-choice-btn {
+  position: relative;
 }

@@ -4,7 +4,7 @@
  */
 
 import type { Node, Choice, StatKey, HaiId } from '@/game/types'
-import { HAI_IDS } from '@/game/types'
+import { normalizeHais } from '@/game/types'
 import { statLabel } from '@/game/state'
 
 export interface StateFilter {
@@ -25,31 +25,23 @@ export interface AIContext {
   taboo: string[]
   objective: string
   description: string
-  /** One-sentence story beat from skeleton (AI-2); rewrite as 1–2 sentence narrative when present. */
   storyBeat?: string
   stateFilter: StateFilter
   statLabels: StatLabels
   realmName: string
   yishiSummary: string
   choiceHistorySummary: string
-  /** 害强度，用于感官滤镜 */
+  narrativeFactSummary?: string
   hais: Record<HaiId, number>
 }
 
 const CHARS_PER_TOKEN = 2
 const MAX_YISHI_ENTRIES = 5
 
-/**
- * Rough token estimate; used to cap yishi summary size.
- */
 function charsToTokens(chars: number): number {
   return Math.ceil(chars / CHARS_PER_TOKEN)
 }
 
-/**
- * Compress recent yishi entries into a prompt-injectable summary.
- * AI-E3
- */
 export function getYishiSummary(entries: string[], maxTokens = 300): string {
   if (!entries.length) return '（无）'
   const recent = entries.slice(-MAX_YISHI_ENTRIES)
@@ -62,10 +54,6 @@ export function getYishiSummary(entries: string[], maxTokens = 300): string {
   return acc.trim() || '（无）'
 }
 
-/**
- * Summarize choice history for yishi凝练 /念头编排.
- * AI-E4
- */
 export function getChoiceHistorySummary(choices: Choice[]): string {
   return choices.map((c) => c.text).join('\n') || '（无）'
 }
@@ -74,17 +62,14 @@ export interface BuildContextInput {
   node: Node
   realmName: string
   stats: Record<StatKey, number>
-  hais?: Record<HaiId, number>
-  yishiEntries: string[]
+  hais?: Partial<Record<HaiId, number>>
+  yishiEntryTexts: string[]
   choiceHistory: Choice[]
+  narrativeFactSummary?: string
 }
 
-/**
- * Assemble full AIContext from GameState + Skeleton node.
- * AI-E1, AI-E2
- */
 export function buildContext(input: BuildContextInput): AIContext {
-  const { node, realmName, stats, hais = {}, yishiEntries, choiceHistory } = input
+  const { node, realmName, stats, hais = {}, yishiEntryTexts, choiceHistory, narrativeFactSummary } = input
   const plotGuide = node.plot_guide ?? node.truth_anchors ?? []
   const taboo = node.taboo ?? []
   const objective = node.objective ?? ''
@@ -98,9 +83,7 @@ export function buildContext(input: BuildContextInput): AIContext {
     gen_jiao: statLabel('gen_jiao', stats.gen_jiao),
     jian_zhao: statLabel('jian_zhao', stats.jian_zhao),
   }
-  const haisRecord: Record<HaiId, number> = Object.fromEntries(
-    HAI_IDS.map((k) => [k, (hais as Record<HaiId, number>)?.[k] ?? 0])
-  ) as Record<HaiId, number>
+  const haisRecord = normalizeHais(hais)
   return {
     nodeId: node.node_id,
     plotGuide,
@@ -111,8 +94,9 @@ export function buildContext(input: BuildContextInput): AIContext {
     stateFilter,
     statLabels,
     realmName,
-    yishiSummary: getYishiSummary(yishiEntries, 200),
+    yishiSummary: getYishiSummary(yishiEntryTexts, 200),
     choiceHistorySummary: getChoiceHistorySummary(choiceHistory),
+    narrativeFactSummary,
     hais: haisRecord,
   }
 }

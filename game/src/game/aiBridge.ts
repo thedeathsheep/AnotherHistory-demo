@@ -8,6 +8,8 @@ export {
   generateYishi,
   generateChoices,
   AI_DEBUG,
+  narrativeMatchesPlotGuide,
   type NodeContext,
   type StateFilter,
+  type GenerateNarrativeOptions,
 } from './aiEngine'

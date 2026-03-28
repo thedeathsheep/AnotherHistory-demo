@@ -1,32 +1,35 @@
 import type { ReactNode } from 'react'
 
-const FOOTER_HEIGHT = '2.75rem' // fixed height to avoid layout jump
+const FOOTER_HEIGHT = '2.75rem'
 
-/** Parse *keyword* and [highlight] for 鉴照高亮; jianZhaoLevel 障目时不高亮 */
+/** Parse *keyword* and [highlight] for 鉴照：清彻强高亮，混浊弱/糊，障目隐藏 */
 function parseKeywordHighlights(
   content: string,
   jianZhaoLevel: '清彻' | '混浊' | '障目' | undefined
 ): ReactNode[] {
   if (!content) return []
   const showHighlight = jianZhaoLevel && jianZhaoLevel !== '障目'
+  const starClass =
+    jianZhaoLevel === '混浊'
+      ? 'jianzhao-highlight jianzhao-highlight--turbid-star'
+      : 'jianzhao-highlight jianzhao-highlight--clear-star'
+  const bracketClass =
+    jianZhaoLevel === '混浊'
+      ? 'jianzhao-highlight-secondary jianzhao-highlight--turbid-bracket'
+      : 'jianzhao-highlight-secondary jianzhao-highlight--clear-bracket'
+
   const segments = content.split(/(\*[^*]+\*|\[[^\]]+\])/g)
   return segments.map((seg, i) => {
     if (seg.startsWith('*') && seg.endsWith('*')) {
       return (
-        <span
-          key={i}
-          className={showHighlight ? 'keyword-highlight' : undefined}
-        >
+        <span key={i} className={showHighlight ? starClass : undefined}>
           {seg.slice(1, -1)}
         </span>
       )
     }
     if (seg.startsWith('[') && seg.endsWith(']')) {
       return (
-        <span
-          key={i}
-          className={showHighlight ? 'keyword-highlight-secondary' : undefined}
-        >
+        <span key={i} className={showHighlight ? bracketClass : undefined}>
           {seg.slice(1, -1)}
         </span>
       )
@@ -39,11 +42,8 @@ interface Props {
   title: string
   content: string
   className?: string
-  /** 鉴照档位：清彻/混浊显示高亮，障目时不高亮 */
   jianZhaoLevel?: '清彻' | '混浊' | '障目'
-  /** When true, always show a fixed-height footer bar (stable layout when in conclusion) */
   reserveFooter?: boolean
-  /** Rendered in the footer bar (e.g. "收入卷轴" button). Empty space when null. */
   footerAction?: ReactNode
 }
 

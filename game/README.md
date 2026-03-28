@@ -38,6 +38,8 @@ npm run electron:dev
 
 会先启动 Vite，再打开 Electron 窗口并加载当前页面。
 
+**AI 回归（离线）**：`npm run test:ai` 校验 plot_guide 匹配逻辑；若已配置 API Key，可 `npm run test:ai -- --live` 做最小联网烟测。
+
 ### 方式二：Docker（两台机器环境一致，无需本机装 Node）
 
 在**任意一台**有 Docker 的机器上：
@@ -77,8 +79,9 @@ npm run generate:prologue
 
 | 目录/文件                       | 说明                   |
 | --------------------------- | -------------------- |
-| `src/game/`                 | 类型、骨架加载、状态、AI 桥接     |
-| `src/components/`           | 叙事框、状态框、感应框、卷轴框      |
+| `src/game/`                 | 类型、状态、`save`/`endings`、`catalog`、`narrativeContext`、`aiOutput` |
+| `src/game/aiEngine/`        | `chat`、`dataAcquisition`、各场景 `prompts` |
+| `src/components/`           | 叙事/状态/感应/卷轴、`Overlay`、物证/线索/交互框      |
 | `public/data/prologue.json` | 序章骨架（可由流水线生成） |
 | `public/data/skeleton.json` | 主内容骨架 |
 | `design/`                  | 策划输入、AI 功能设定 |
@@ -96,4 +99,12 @@ npm run generate:prologue
 
 - 核心循环与 prototype 一致：入界 → 叙事（骨架 + 可选 AI）→ 感应 → 抉择 → 结案（异史归档）。
 - API Key 通过 `VITE_AIHUBMIX_API_KEY` 或 `public/config.json` 提供，与 prototype 的 `api_key.txt` 二选一即可。
+
+## 运行时系统（摘要）
+
+- **存档**：浏览器 `localStorage` 键 `anotherhistory_save_0`～`_4`；Electron 另写 `userData/saves/slot-N.json`。首次启动会尝试从磁盘 hydrate 空槽。
+- **交互**：顶栏「交互」打开存档槽、手动存档、读档、删档、清空全部。
+- **物证/线索**：侧栏按钮打开 Overlay；策划可在 `src/game/catalog.ts` 的 `ITEM_REGISTRY` / `CLUE_REGISTRY` 配展示名与分类。
+- **骨架可选字段**：`Choice.required_clue`、`drop_item`；`Node.required_item`、`unlock_clue`（与 `gate` 并存）。
+- **结局与 TODO 对齐**：见仓库根目录 `TODO.md`（2026-03-28 起与实现对齐维护）。
 

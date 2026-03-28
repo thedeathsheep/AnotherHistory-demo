@@ -1,7 +1,7 @@
 {
   "name": "another-history",
   "private": true,
-  "version": "0.1.0",
+  "version": "3.0.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "electron:dev": "npx --yes kill-port 5173 5174 5175 && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build",
+    "test:ai": "node scripts/ai-regression.mjs",
     "generate:prologue": "node scripts/generate-chapter.mjs prologue",
     "generate:prologue:force": "node scripts/generate-chapter.mjs prologue --force",
     "generate": "node scripts/generate-chapter.mjs"

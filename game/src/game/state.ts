@@ -1,5 +1,7 @@
-import type { Skeleton, Node, Choice, StatKey, HaiId } from './types'
-import { DEFAULT_STATS, MING_ZHU, GEN_JIAO, JIAN_ZHAO, HAI_IDS } from './types'
+import type { Skeleton, Node, Choice, StatKey, HaiId, Item, Clue, YishiEntry } from './types'
+import { DEFAULT_STATS, MING_ZHU, GEN_JIAO, JIAN_ZHAO, HAI_IDS, normalizeHais } from './types'
+import { itemFromId, clueFromId } from './catalog'
+import { createYishiEntry } from './aiOutput'
 
 function clampStats(stats: Record<StatKey, number>): void {
   ;([MING_ZHU, GEN_JIAO, JIAN_ZHAO] as const).forEach((k) => {
@@ -14,7 +16,7 @@ function clampHais(hais: Record<HaiId, number>): void {
 }
 
 function emptyHais(): Record<HaiId, number> {
-  return Object.fromEntries(HAI_IDS.map((k) => [k, 0])) as Record<HaiId, number>
+  return normalizeHais()
 }
 
 /** 选项是否触犯禁忌（简单关键词匹配） */
@@ -34,16 +36,41 @@ export function statLabel(key: StatKey, value: number): string {
   return String(value)
 }
 
+/** 触犯禁忌：叠灵损、略抬避讳害、扣命烛（由 GameState 统一执行） */
+export function applyTabooViolationToState(stats: Record<StatKey, number>, hais: Record<HaiId, number>): void {
+  hais.ling_sun = Math.min(100, (hais.ling_sun ?? 0) + 50)
+  hais.bi_hui = Math.min(100, (hais.bi_hui ?? 0) + 15)
+  stats.ming_zhu = Math.max(0, stats.ming_zhu - 10)
+}
+
+/** 线索越多，点破消耗鉴照比例越低 */
+export function dianPoConsumePercent(clueCount: number): number {
+  if (clueCount >= 6) return 5
+  if (clueCount >= 3) return 7
+  if (clueCount >= 1) return 8
+  return 10
+}
+
+export function filterChoicesByClue(choices: Choice[], clueIds: string[]): Choice[] {
+  const set = new Set(clueIds)
+  return choices.filter((c) => !c.required_clue || set.has(c.required_clue))
+}
+
+/** 玩家主动「中途定稿」时写入异史结论标签（与 AI 凝练 prompt 一致） */
+export const MID_CONCLUDE_LABEL = '中途定稿'
+
 export class GameState {
   skeleton: Skeleton
   stats: Record<StatKey, number>
   hais: Record<HaiId, number>
-  items: string[]
-  clues: string[]
+  items: Item[]
+  clues: Clue[]
   currentNodeId: string | null
   realmId: string | null
   choiceHistory: Choice[]
-  yishiEntries: string[]
+  yishiEntries: YishiEntry[]
+  /** 累计抉择步数（亡史系等） */
+  stepsTaken: number
 
   constructor(skeleton: Skeleton) {
     this.skeleton = skeleton
@@ -55,12 +82,21 @@ export class GameState {
     this.realmId = null
     this.choiceHistory = []
     this.yishiEntries = []
+    this.stepsTaken = 0
   }
 
   get realmName(): string {
     if (!this.realmId) return ''
     const r = this.skeleton.realms.find((x) => x.id === this.realmId!)
     return r?.name ?? this.realmId
+  }
+
+  itemIds(): string[] {
+    return this.items.map((i) => i.id)
+  }
+
+  clueIds(): string[] {
+    return this.clues.map((c) => c.id)
   }
 
   startRealm(realmId?: string): boolean {
@@ -76,7 +112,28 @@ export class GameState {
     this.clues = []
     this.choiceHistory = []
     this.yishiEntries = []
+    this.stepsTaken = 0
     return true
+  }
+
+  /** Switch realm mid-run: keep stats, hais, items, clues, scroll, history; spawn at entry node. */
+  enterRealm(realmId: string): boolean {
+    const realm = this.skeleton.realms.find((r) => r.id === realmId)
+    if (!realm?.entry_node) return false
+    this.realmId = realm.id
+    this.currentNodeId = realm.entry_node
+    return true
+  }
+
+  /** 中途定稿：离开当前节点，不改动三相/害/物证/线索；记入抉择史并增加步数，供异史凝练摘要使用 */
+  beginMidConclude(): void {
+    this.currentNodeId = null
+    this.choiceHistory.push({
+      text: '就此定稿，先行封笔。',
+      next: '__结案__',
+      state: {},
+    })
+    this.stepsTaken += 1
   }
 
   getCurrentNode(): Node | null {
@@ -91,10 +148,13 @@ export class GameState {
   /** 是否满足节点门禁条件 */
   canEnterNode(node: Node): boolean {
     const gate = node.gate
-    if (!gate) return true
-    if (gate.item != null && !this.items.includes(gate.item)) return false
-    if (gate.clue != null && !this.clues.includes(gate.clue)) return false
-    const sm = gate.stat_min
+    const ids = this.itemIds()
+    const cids = this.clueIds()
+    if (gate?.item != null && !ids.includes(gate.item)) return false
+    if (gate?.clue != null && !cids.includes(gate.clue)) return false
+    if (node.required_item != null && !ids.includes(node.required_item)) return false
+    if (node.unlock_clue != null && !cids.includes(node.unlock_clue)) return false
+    const sm = gate?.stat_min
     if (sm) {
       for (const k of [MING_ZHU, GEN_JIAO, JIAN_ZHAO] as const) {
         const min = sm[k]
@@ -114,14 +174,18 @@ export class GameState {
       this.hais[k] += haiDelta[k] ?? 0
     })
     for (const id of choice.gain_item ?? []) {
-      if (id && !this.items.includes(id)) this.items.push(id)
+      if (id && !this.itemIds().includes(id)) this.items.push(itemFromId(id))
     }
     for (const id of choice.gain_clue ?? []) {
-      if (id && !this.clues.includes(id)) this.clues.push(id)
+      if (id && !this.clueIds().includes(id)) this.clues.push(clueFromId(id))
+    }
+    for (const id of choice.drop_item ?? []) {
+      if (id) this.items = this.items.filter((i) => i.id !== id)
     }
     clampStats(this.stats)
     clampHais(this.hais)
     this.choiceHistory.push(choice)
+    this.stepsTaken += 1
 
     const nextId = choice.next
     const conclusion = choice.conclusion_label ?? null
@@ -142,8 +206,14 @@ export class GameState {
     return true
   }
 
-  addYishiEntry(text: string): void {
-    this.yishiEntries.push(text)
+  addYishiEntry(raw: string | YishiEntry): void {
+    const entry = typeof raw === 'string' ? createYishiEntry(raw) : raw
+    this.yishiEntries.push(entry)
+  }
+
+  /** Plain lines for AI summaries */
+  getYishiTexts(): string[] {
+    return this.yishiEntries.map((e) => e.text)
   }
 
   getChoiceSummaryForYishi(): string {

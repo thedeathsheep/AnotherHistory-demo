@@ -1,0 +1,48 @@
+{
+  "staticCases": [
+    {
+      "id": "plot_guide_hit",
+      "output": "雾起折戟原，脚边土路发硬。",
+      "plotGuide": ["折戟原"],
+      "expectMatch": true
+    },
+    {
+      "id": "plot_guide_miss",
+      "output": "只有白雾，听不见人声。",
+      "plotGuide": ["折戟原", "铁锈"],
+      "expectMatch": false
+    },
+    {
+      "id": "taboo_keyword_stripped",
+      "output": "你停步，不敢回头。",
+      "plotGuide": ["禁忌：回头"],
+      "expectMatch": true
+    },
+    {
+      "id": "short_keyword_ignored",
+      "output": "路。",
+      "plotGuide": ["x"],
+      "expectMatch": false
+    }
+  ],
+  "tabooCases": [
+    {
+      "id": "taboo_narrative_hit",
+      "text": "你推开庙门，霉味扑面。",
+      "taboo": ["庙"],
+      "expectViolates": true
+    },
+    {
+      "id": "taboo_strip_buke",
+      "text": "脚下一滑，差点走神。",
+      "taboo": ["不可走神"],
+      "expectViolates": true
+    },
+    {
+      "id": "taboo_clean",
+      "text": "土路发硬，风贴着耳廓过。",
+      "taboo": ["庙", "回头"],
+      "expectViolates": false
+    }
+  ]
+}
