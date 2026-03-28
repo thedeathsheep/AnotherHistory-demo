@@ -128,13 +128,16 @@ export async function generateChoices(
   realmName: string,
   items: Item[],
   clues: Clue[],
-  requireItemThought?: boolean
+  requireItemThought?: boolean,
+  /** 与叙事一体：有 AI 叙事时应为成稿；无则为骨架 description */
+  sceneNarrative?: string
 ): Promise<AIGeneratedChoice[]> {
   if (!node.choices?.length) return []
   const user = buildChoicesUserPrompt({
     plotGuide: node.plot_guide ?? node.truth_anchors ?? [],
     taboo: node.taboo ?? [],
     storyBeat: node.story_beat,
+    sceneNarrative: sceneNarrative?.trim() || undefined,
     skeletonChoices: node.choices,
     items,
     clues,

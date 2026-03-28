@@ -43,6 +43,11 @@ type FlyState = {
 
 type Panel = null | 'items' | 'clues' | 'menu' | 'yishi'
 
+/** AI 正在写境遇正文（非「感应」阶段） */
+const AI_BODY_LOADING_HINT = '境遇正文凝练中…'
+/** 正文未出时不占位展示选项，仅作说明 */
+const SENSE_AFTER_BODY_HINT = '待正文落定，感应方显。'
+
 export default function App() {
   const [skeleton, setSkeleton] = useState<Skeleton | null>(null)
   const [game, setGame] = useState<GameState | null>(null)
@@ -164,11 +169,17 @@ export default function App() {
     const nid = node.node_id
     if (cachedAiChoices[nid] !== undefined) return
 
+    const nodeUseAi = Boolean(apiKey && (node.plot_guide ?? node.truth_anchors)?.length)
+    if (nodeUseAi && cachedNarrative[nid] === undefined) return
+
     let cancelled = false
     setChoicesLoading(true)
     if (AI_DEBUG) console.log('[App] Trigger AI choices for node:', nid)
     const requireItemThought = game.items.length > 0
-    generateChoices(apiKey, node, game.realmName, game.items, game.clues, requireItemThought)
+    const sceneNarrative = nodeUseAi
+      ? cachedNarrative[nid]
+      : (node.description?.trim() || node.story_beat || '')
+    generateChoices(apiKey, node, game.realmName, game.items, game.clues, requireItemThought, sceneNarrative)
       .then((aiChoices) => {
         if (!cancelled && aiChoices.length > 0) {
           const merged: Choice[] = aiChoices.map((ac) => {
@@ -182,7 +193,7 @@ export default function App() {
         if (!cancelled) setChoicesLoading(false)
       })
     return () => { cancelled = true }
-  }, [loading, game, node, apiKey, cachedAiChoices])
+  }, [loading, game, node, apiKey, cachedAiChoices, cachedNarrative])
 
   const handleRegenerateGenerated = async () => {
     if (!window.electronAPI?.regenerateGenerated || regenerating) return
@@ -327,6 +338,9 @@ export default function App() {
   if (!game) return null
 
   const gateBlocked = node && !game.canEnterNode(node)
+  /** 有 AI 叙事且尚未写入缓存（含 effect 首帧尚未 set narrativeLoading 时） */
+  const narrativeAwaitingAi =
+    Boolean(node && useAi && cachedNarrative[node.node_id] === undefined)
   const narrativeContent = yishiLoading
     ? (yishiHint || '正在整理行旅……')
     : gateBlocked
@@ -334,8 +348,8 @@ export default function App() {
       : node && useAi && cachedNarrative[node.node_id] !== undefined
         ? cachedNarrative[node.node_id]
         : node
-          ? narrativeLoading
-            ? '正在感应…'
+          ? narrativeAwaitingAi || narrativeLoading
+            ? AI_BODY_LOADING_HINT
             : node.description
           : ''
 
@@ -345,6 +359,10 @@ export default function App() {
 
   const dianPoPct = dianPoConsumePercent(game.clues.length)
   const canDianPo = node && game.stats.jian_zhao >= dianPoPct
+  /** 境遇正文已可供阅读：无 AI 叙事则立即可；有 AI 则须缓存已写入 */
+  const beatNarrativeReady = !node || !useAi || cachedNarrative[node.node_id] !== undefined
+  /** 正文已出之后，仅异史/补念加载时锁住操作 */
+  const choicesInteractLocked = yishiLoading || choicesLoading
 
   const showNarrativeContent =
     game?.isGameOver()
@@ -407,7 +425,7 @@ export default function App() {
 
   const handleMidConclude = async () => {
     if (!game || !node) return
-    if (narrativeLoading || yishiLoading || choicesLoading) return
+    if (!beatNarrativeReady || choicesInteractLocked) return
     if (
       !window.confirm(
         '确定要中途定稿吗？将离开当前境遇，以「中途定稿」凝练一条异史；命烛、根脚、鉴照与书箱保留。'
@@ -584,13 +602,13 @@ export default function App() {
                       className="text-[var(--dot-muted)]"
                       style={{ fontSize: 'var(--dot-size)' }}
                     >
-                      {node ? '【感应】' : ''}
+                      {node && beatNarrativeReady ? '【感应】' : ''}
                     </span>
-                    {node && canDianPo && (
+                    {node && beatNarrativeReady && canDianPo && (
                       <button
                         type="button"
                         onClick={handleDianPo}
-                        disabled={narrativeLoading || yishiLoading}
+                        disabled={choicesInteractLocked}
                         className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] disabled:opacity-50"
                         style={{ fontSize: 'var(--dot-size)' }}
                         title={`消耗 ${dianPoPct}% 鉴照，剔除一个选项`}
@@ -598,11 +616,11 @@ export default function App() {
                         点破
                       </button>
                     )}
-                    {node && (
+                    {node && beatNarrativeReady && (
                       <button
                         type="button"
                         onClick={handleMidConclude}
-                        disabled={narrativeLoading || yishiLoading || choicesLoading}
+                        disabled={choicesInteractLocked}
                         className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-muted)] hover:text-[var(--dot-text)] disabled:opacity-50"
                         style={{ fontSize: 'var(--dot-size)' }}
                         title="不选当前感应，直接封笔：凝练一条异史后可收入卷轴；门禁未满足时也可借此离场。三相与书箱不变。"
@@ -648,23 +666,35 @@ export default function App() {
                     {game?.isGameOver() ? '重新开始' : '再玩一次'}
                   </button>
                 </div>
-              ) : node && !gateBlocked ? (() => {
-                const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
-                const filtered = baseChoices
-                  .map((choice, origIndex) => ({ choice, origIndex }))
-                  .filter(({ choice }) => filterChoicesByClue([choice], game.clueIds()).length > 0)
-                  .filter(({ origIndex }) => origIndex !== dianPoRemovedIndex)
-                return (
-                  <ChoiceList
-                    choices={filtered.map((x) => x.choice)}
-                    onSelect={(fi) => handleChoice(filtered[fi].choice)}
-                    disabled={narrativeLoading || yishiLoading || choicesLoading}
-                    className="flex-1 min-h-0 overflow-y-auto"
-                    jingZheLevel={game.hais.jing_zhe ?? 0}
-                    onJingZheMisclick={handleJingZheMisclick}
-                  />
+              ) : node && !gateBlocked ? (
+                !beatNarrativeReady ? (
+                  <div
+                    className="flex-1 flex items-center justify-center text-[var(--dot-muted)] px-3 text-center"
+                    style={{ fontSize: 'var(--dot-size)' }}
+                    role="status"
+                  >
+                    {SENSE_AFTER_BODY_HINT}
+                  </div>
+                ) : (
+                  (() => {
+                    const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
+                    const filtered = baseChoices
+                      .map((choice, origIndex) => ({ choice, origIndex }))
+                      .filter(({ choice }) => filterChoicesByClue([choice], game.clueIds()).length > 0)
+                      .filter(({ origIndex }) => origIndex !== dianPoRemovedIndex)
+                    return (
+                      <ChoiceList
+                        choices={filtered.map((x) => x.choice)}
+                        onSelect={(fi) => handleChoice(filtered[fi].choice)}
+                        disabled={choicesInteractLocked}
+                        className="flex-1 min-h-0 overflow-y-auto"
+                        jingZheLevel={game.hais.jing_zhe ?? 0}
+                        onJingZheMisclick={handleJingZheMisclick}
+                      />
+                    )
+                  })()
                 )
-              })() : gateBlocked ? (
+              ) : gateBlocked ? (
                 <div className="flex-1 flex items-center justify-center text-[var(--dot-muted)]" style={{ fontSize: 'var(--dot-size)' }}>
                   需满足条件方可继续
                 </div>

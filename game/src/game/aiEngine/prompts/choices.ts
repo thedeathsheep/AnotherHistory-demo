@@ -9,6 +9,8 @@ export interface ChoicesPromptInput {
   plotGuide: string[]
   taboo: string[]
   storyBeat?: string
+  /** 玩家当前读到的境遇正文（AI 叙事成稿或骨架描述）；补充念头须与此一体 */
+  sceneNarrative?: string
   skeletonChoices: Choice[]
   items: Item[]
   clues: Clue[]
@@ -18,7 +20,8 @@ export interface ChoicesPromptInput {
 }
 
 export function buildChoicesUserPrompt(input: ChoicesPromptInput): string {
-  const { plotGuide, taboo, storyBeat, skeletonChoices, items, clues, realmName, requireItemThought } = input
+  const { plotGuide, taboo, storyBeat, sceneNarrative, skeletonChoices, items, clues, realmName, requireItemThought } =
+    input
   const nexts = [...new Set(skeletonChoices.map((c) => c.next).filter(Boolean))]
   const itemLine = items.length
     ? `【已有物证】${items.map((i) => `${i.name}(${i.category})`).join('、')}`
@@ -32,6 +35,9 @@ export function buildChoicesUserPrompt(input: ChoicesPromptInput): string {
       : ''
   const sections: string[] = [
     `【境遇】${realmName}`,
+    sceneNarrative
+      ? `【当前境遇正文】（玩家此刻读到的文字；补充念头须与语气、物象、处境一致，不可另起无关场景）\n${sceneNarrative}`
+      : '',
     storyBeat ? `【情节点】${storyBeat}` : '',
     plotGuide.length ? `【剧情导向】${JSON.stringify(plotGuide)}` : '',
     taboo.length ? `【禁忌】不可触犯：${JSON.stringify(taboo)}` : '',
@@ -48,7 +54,7 @@ ${sections.join('\n')}
 
 要求：
 - 输出严格 JSON 数组，每项为 {"text": "选项文案", "next": "节点ID"}，next 必须从【可用的 next】中选一个
-- 文案简短（5–18 字），与骨架选项风格一致，不触犯禁忌
+- 文案简短（5–18 字），与【骨架选项】及【当前境遇正文】（若有）风格一体，不触犯禁忌
 - 只输出 JSON，不要其他文字`
 }
 
