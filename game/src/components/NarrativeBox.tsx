@@ -45,9 +45,11 @@ interface Props {
   jianZhaoLevel?: '清彻' | '混浊' | '障目'
   reserveFooter?: boolean
   footerAction?: ReactNode
+  /** True while Writer SSE is in progress (shows a subtle cursor). */
+  streaming?: boolean
 }
 
-export function NarrativeBox({ title, content, className = '', jianZhaoLevel, reserveFooter, footerAction }: Props) {
+export function NarrativeBox({ title, content, className = '', jianZhaoLevel, reserveFooter, footerAction, streaming }: Props) {
   const parsedContent = parseKeywordHighlights(content, jianZhaoLevel)
   return (
     <section
@@ -60,6 +62,7 @@ export function NarrativeBox({ title, content, className = '', jianZhaoLevel, re
         style={{ fontSize: 'var(--dot-size)', lineHeight: 1.6 }}
       >
         {parsedContent}
+        {streaming ? <span className="narrative-stream-cursor ml-0.5 inline-block w-2 animate-pulse opacity-70">▍</span> : null}
       </div>
       {reserveFooter ? (
         <div

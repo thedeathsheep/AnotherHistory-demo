@@ -2,7 +2,29 @@
 
 > 基于 GDD.md、TechnicalFrame.md、ProjectManager.md 对比当前实现，产出可执行任务列表。  
 > **AI 引擎**：`aiEngine/` 分层；流水线 PIPE-1～PIPE-9；Electron 重新生成与存档镜像（userData/saves）。  
-> **更新于 2026-03-28**（对齐仓库当前实现；以下「未完成」多为 GDD 全量或策划数据侧）。**文案设定**：叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列；节点衔接见 design/AI功能设定/ai3_texts.md、ai2_nodes.md。
+> **更新于 2026-03-29**（对齐仓库当前实现；以下「未完成」多为 GDD 全量或策划数据侧）。**文案设定**：叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列；节点衔接见 design/AI功能设定/ai3_texts.md、ai2_nodes.md。
+
+---
+
+## 〇、状态快照（维护用）
+
+### 已完成（代码已落地，可持续迭代数据与 prompt）
+
+- **核心循环**：入界 → 境遇正文（骨架 + 可选 AI）→ **正文落定后再显感应** → 抉择 → 结案/中途定稿 → 异史入卷轴；加载副本用「境遇正文凝练中…」，感应未出时用「待正文落定，感应方显。」
+- **AI**：`aiEngine/`（叙事 plot_guide 校验重试、**叙事禁忌重试**、异史 coreFacts、补选项 **在叙事成稿后** 请求并注入 **【当前境遇正文】**）；`aiBridge` 兼容导出；`npm run test:ai` 静态回归（plot + taboo）
+- **状态与害**：三相档位 UI、18×`HaiId`、惊蛰抖动/误触、点破、反噬、避讳联动等（见 M1）
+- **物证/线索**：模型、门禁、Overlay、凭物补念、`catalog`、抉择获得条带提示
+- **多界与收束**：`manifest.json` 多 realm、`enterRealm` 换界、**定稿** `beginMidConclude`、结局矩阵 `evaluateEnding`
+- **存档**：5 槽、V2 存盘、Electron 镜像、继续/新游戏
+- **版本**：`game/package.json` 当前 **3.0.0**（里程碑标记，界面与 Electron 标题可读）
+
+### 接下来（优先级从高到低，可按轮次摘取）
+
+1. **发布与工程**：Electron **electron-builder** 安装包（M4-5）；主界面/槽位 **polish**（M4-4）
+2. **体验**：卷轴小屏与侧栏统一（M4-3）；可选 **行旅纪要/抉择回顾** 面板（减上下文焦虑，数据已有 `choiceHistory` / 事实流）
+3. **AI 与内容**：**AI-E16** 物品/NPC 独立模板；流水线把 **skeleton 界** 纳入或与 prologue 同规范生成；结局与害 **与 GDD 逐条对齐**（数据+条件）
+4. **骨架演进**：**D-1** 事件/剧情点层级；**D-3** `hai_trigger` 等扩展字段（可选）
+5. **暂缓**：SQLite/上云（`databasePolicy.ts`）
 
 ---
 
@@ -13,8 +35,8 @@
 | ----------- | -------------- | ------------------------------------------------ |
 | 技术栈         | ✅ 100%         | Electron + React + TS + Tailwind                 |
 | 骨架加载        | ✅ ~92%         | 界/节点/plot_guide/禁忌/门禁 gate、required_item、unlock_clue；仍缺事件/剧情点层级（D-1） |
-| 入界→感应→抉择→结案 | ✅ ~90%         | 核心循环 + AI 叙事/异史/补选项；语义解锁 `required_clue`；凭物念头；**交互内换界**（M3-1） |
-| **AI 引擎**   | ⚠️ **~65%**     | buildContext、灵损摘要截断、plot_guide 校验重试、害分档 prompt、异史 coreFacts、choices 凭物 |
+| 入界→感应→抉择→结案 | ✅ ~92%         | 核心循环 + AI 叙事/异史/补选项；**正文先于感应**；语义解锁；凭物；**换界**；**中途定稿** |
+| **AI 引擎**   | ⚠️ **~72%**     | buildContext、灵损摘要、plot/禁忌重试、害分档、coreFacts、补念带 **sceneNarrative**；缺 E16 等 |
 | 三相状态        | ✅ ~95%         | 档位 UI（无百分比）；点破按线索降耗；结案 jian_zhao_penalty（反噬）已有 |
 | 害系统         | ⚠️ **~35%**     | 运行时 18 种 HaiId + prompt 滤镜 + 避讳联动；GDD 40+ 害与惊蛰 UI 特效等仍缺 |
 | 物证/线索系统     | ⚠️ **~55%**     | Item/Clue、gate、gain、Overlay 物证/线索框、`catalog.ts` 可扩展展示名 |
@@ -45,7 +67,8 @@
 
 ## 二、AI 引擎完整实现（核心优先级）
 
-> 对应 GDD 5.5；aiEngine 已分层，aiBridge 保留为兼容入口。
+> 对应 GDD 5.5；aiEngine 已分层，aiBridge 保留为兼容入口。  
+> **Engine v2**：`design-seed.json` + `runPlanner` / `runDirector`、`contextAssembly`（L0–L5）、`WorldStateGraph`、`generateDynamicBeatNarrative`（可流式）与 `generateDynamicBeatChoices`、`SaveData` v3；Planner 失败或未配置种子时 **骨架降级**。
 
 ### 2.1 数据获取层（Data Acquisition）
 
@@ -72,7 +95,7 @@
 - [x] **AI-E12** 建立 `prompts/` 目录：主叙事、异史凝练、感应念头、物品描述、剧情人物等模板，支持占位符
 - [x] **AI-E13** 主叙事 prompt：支持 plot_guide、taboo、objective、三相档位；叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列，要求具体情节点或与前后衔接
 - [x] **AI-E14** 异史凝练 prompt：支持结论标签、抉择摘要、coreFacts、可选 [真史][疑伪][秽] 标签
-- [x] **AI-E15** `generateChoices` + 凭物：持物时 prompt 要求 `(凭物)` 念头；仍 1–2 条 AI 补充（非全量 1–5 条生成）
+- [x] **AI-E15** `generateChoices` + 凭物：持物时 `(凭物)` 念头；**叙事成稿后再请求**，并注入 **【当前境遇正文】**（`sceneNarrative`），与骨架 next 合并
 - **AI-E16** 物品/剧情人物 prompt（M2 后）：以物寻线、NPC 对话与态度，独立模板
 - **AI-E17** 提示词版本化：模板文件纳入 Git，每次修改打 tag 或 commit 说明，便于回归
 
@@ -88,13 +111,13 @@
 
 - [x] **AI-E23** 统一 `chat()` 封装：超时、重试、日志、可选 debug 开关（VITE_AI_DEBUG=1 开启）
 - [x] **AI-E24** 降级策略：API 失败时返回 null，App 回退到骨架 description
-- [~] **AI-E25** `npm run test:ai` 静态校验 `narrativeMatchesPlotGuide` + `violatesTaboo`（fixtures `tabooCases`）；`--live` 可选打 API
+- [x] **AI-E25** `npm run test:ai` 静态校验 `narrativeMatchesPlotGuide` + `violatesTaboo`（`tabooCases`）；`--live` 可选打 API；更全回归见 M4-6
 
 ---
 
 ## 三、按里程碑拆分的 TODO
 
-### M0 收尾（当前冲刺）
+### M0 收尾（已关闭）
 
 - [x] **M0-1** 鉴照关键词高亮：`NarrativeBox` + `index.css` 清彻/混浊/障目
 - [x] **M0-2** 调试日志：可选 debug 模式，默认关闭；设置 `VITE_AI_DEBUG=1` 开启
@@ -151,7 +174,7 @@
 - [~] **M4-3** 卷轴：md 侧栏 + 小屏 Overlay「卷轴」入口；与 GDD「随时独立层」仍可再统一
 - **M4-4** 主界面 **可再 polish**（槽位选择屏等）
 - **M4-5** Electron 打包 **未接** electron-builder 等
-- **M4-6** 自动化回归 **待** AI-E25 落地
+- [~] **M4-6** `npm run test:ai` 已覆盖 plot_guide + `violatesTaboo` 静态用例；TS 侧大规模 fixture、CI 接入可再加
 
 ---
 
@@ -217,7 +240,7 @@
 | **第 4 轮** | 数据修改 + 策划交互     | [x] 大部；E19 叙事禁忌重试已接；E7 叙事自动发奖 可选                         |
 | **第 5 轮** | 害与鉴照 + 上下文      | [x] AI-E9～E11、M1 主干；M1-8 惊蛰 UI/误触                               |
 | **第 6 轮** | 物证与线索           | [x] M2 主干；M2-8、AI-E16 待                                         |
-| **第 7 轮** | 多界与结局           | [x] 判定与文案占位；M3-1/2/4 流程深化                                  |
+| **第 7 轮** | 多界与结局           | [x] M3-1 换界、M3-2 定稿、结局链；余 M4-4 界面 polish                         |
 | **第 8 轮** | 数据库与存读档         | 暂缓 DB；存档已完成                                                   |
 | **第 9 轮** | 发布候选            | M4-5 打包、M4-6 回归、M4-4 polish                                   |
 
@@ -226,7 +249,9 @@
 
 ## 九、快速参考
 
-- **aiEngine**：`game/src/game/aiEngine/` — chat、dataAcquisition（`yishiEntryTexts`、`narrativeFactSummary`）、prompts（narrative 害分档 + plot 重试、yishi coreFacts、choices 凭物）
+- **aiEngine**：`game/src/game/aiEngine/` — chat、dataAcquisition、prompts（叙事 plot+禁忌重试、害分档、yishi coreFacts、**choices + sceneNarrative**）
+- **多 realm**：`public/data/manifest.json` 的 `chapters` 列表；`loadSkeleton()` 合并各 JSON 为 `Skeleton.realms`
+- **节奏**：AI 节点先缓存叙事再拉补念；UI 在正文未缓存时不渲染感应列表（见 `App.tsx` 常量 `AI_BODY_LOADING_HINT` / `SENSE_AFTER_BODY_HINT`）
 - **状态与类型**：`types.ts`（Item/Clue/YishiEntry/HaiId×18）、`state.ts`、`catalog.ts`、`aiOutput.ts`、`narrativeContext.ts`、`endings.ts`、`save.ts`（`saveStorageKey`、`hydrateSlotsFromElectron`）
 - **UI**：`Overlay`、`ItemBox`、`ClueBox`、`InteractionBox`；`NarrativeBox` 鉴照三档高亮
 - **Electron**：`write/read/delete-save-slot` IPC

@@ -13,6 +13,7 @@
     "electron:dev": "npx --yes kill-port 5173 5174 5175 && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build",
     "test:ai": "node scripts/ai-regression.mjs",
+    "format:skeleton": "node scripts/format-json.mjs public/data/skeleton.json",
     "generate:prologue": "node scripts/generate-chapter.mjs prologue",
     "generate:prologue:force": "node scripts/generate-chapter.mjs prologue --force",
     "generate": "node scripts/generate-chapter.mjs"

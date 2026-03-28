@@ -1,0 +1,47 @@
+{
+  "world": {
+    "name": "行旅",
+    "era": "前科学时代的荒野与驿路",
+    "tone": ["神秘", "孤寂", "记录"],
+    "core_theme": "将不可名状的异象凝练为异史文字，以记录赋予另一种历史"
+  },
+  "protagonist": {
+    "identity": "异史君（旅人）",
+    "goal": "观测、记录、在混乱因果中保全自身与书箱",
+    "arc_hint": "身份由模糊走向职能自觉"
+  },
+  "narrative_rules": [
+    "叙事为游戏服务：具体动作与物象，禁止抽象主语（思绪、心）与浅白套话。",
+    "鉴照可用 *关键词* 标记要点。"
+  ],
+  "realms": [
+    {
+      "id": "prologue",
+      "name": "序章",
+      "theme": "初醒、辨路、第一次感应与记录",
+      "tension_curve": "平缓—惊变—收束",
+      "estimated_beats": 12,
+      "forbidden": ["直呼真名", "打破第四墙解释玩法"],
+      "anchors": [
+        {
+          "id": "awaken",
+          "description": "旅人在荒野或驿边醒来，书箱与手杖在侧",
+          "position": "early",
+          "must_include": ["醒来", "书箱", "路或野地"]
+        },
+        {
+          "id": "first_sense",
+          "description": "第一次明确的感应或异象逼近",
+          "position": "mid",
+          "must_include": ["异象或声响", "身体反应"]
+        },
+        {
+          "id": "first_record",
+          "description": "完成或逼近第一次异史式记录",
+          "position": "late",
+          "must_include": ["记录", "笔墨或纸"]
+        }
+      ]
+    }
+  ]
+}

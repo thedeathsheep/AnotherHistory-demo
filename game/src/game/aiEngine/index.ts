@@ -4,15 +4,25 @@
  */
 
 import type { Node, Choice, HaiId, Item, Clue } from '@/game/types'
-import { violatesTaboo } from '@/game/state'
-import { chat } from './chat'
+import { normalizeHais } from '@/game/types'
+import { violatesTaboo, statLabel } from '@/game/state'
+import { chat, chatStream } from './chat'
 import { buildContext, type StateFilter } from './dataAcquisition'
-import { buildNarrativeUserPrompt, NARRATIVE_SYSTEM, narrativeMatchesPlotGuide } from './prompts/narrative'
+import {
+  buildNarrativeUserPrompt,
+  NARRATIVE_SYSTEM,
+  narrativeMatchesPlotGuide,
+  buildDynamicNarrativeUserPrompt,
+} from './prompts/narrative'
 import { buildYishiUserPrompt, YISHI_SYSTEM } from './prompts/yishi'
 import { buildChoicesUserPrompt, CHOICES_SYSTEM } from './prompts/choices'
+import { buildDynamicChoicesUserPrompt, DYNAMIC_CHOICES_SYSTEM } from './prompts/dynamicChoices'
+import { buildLayeredContext, layeredContextBlock, type LayeredContextInput } from './contextAssembly'
+import { beatNextToken } from '@/game/storyRuntime'
 
 // Re-export for external use
-export { chat, AI_DEBUG } from './chat'
+export { chat, chatStream, AI_DEBUG } from './chat'
+export { getModelForRole, type AIAgentRole } from './aiModels'
 export {
   buildContext,
   getYishiSummary,
@@ -22,6 +32,10 @@ export {
   type StatLabels,
 } from './dataAcquisition'
 export { narrativeMatchesPlotGuide } from './prompts/narrative'
+export { runPlanner } from './agents/planner'
+export { runDirector } from './agents/director'
+export { verifyNarrative, type VerifyNarrativeResult } from './agents/verifier'
+export { buildLayeredContext, layeredContextBlock, type LayeredContext, type LayeredContextInput } from './contextAssembly'
 
 export interface NodeContext {
   node_id: string
@@ -45,6 +59,9 @@ export interface GenerateNarrativeOptions {
   choiceHistory?: Choice[]
   hais?: Record<HaiId, number>
   narrativeFactSummary?: string
+  /** When set, first generation uses SSE; retries use non-streaming chat. */
+  onStreamChunk?: (fullSoFar: string) => void
+  streamSignal?: AbortSignal
 }
 
 /**
@@ -60,7 +77,7 @@ export async function generateNodeNarrative(
   options?: GenerateNarrativeOptions
 ): Promise<string | null> {
   const plotGuide = node.plot_guide ?? node.truth_anchors ?? []
-  const run = async (extra: string): Promise<string | null> => {
+  const messagesFor = (extra: string): { role: string; content: string }[] => {
     const ctx = buildContext({
       node,
       realmName,
@@ -72,16 +89,36 @@ export async function generateNodeNarrative(
     })
     let user = buildNarrativeUserPrompt(ctx)
     if (extra) user += `\n\n${extra}`
-    return chat(apiKey, [{ role: 'system', content: NARRATIVE_SYSTEM }, { role: 'user', content: user }], {
+    return [
+      { role: 'system', content: NARRATIVE_SYSTEM },
+      { role: 'user', content: user },
+    ]
+  }
+
+  const run = async (extra: string, allowStream: boolean): Promise<string | null> => {
+    const msgs = messagesFor(extra)
+    if (allowStream && options?.onStreamChunk) {
+      return chatStream(apiKey, msgs, {
+        maxTokens: 400,
+        label: 'generateNodeNarrative',
+        agentRole: 'writer',
+        onChunk: options.onStreamChunk,
+        signal: options.streamSignal,
+      })
+    }
+    return chat(apiKey, msgs, {
       maxTokens: 400,
       label: 'generateNodeNarrative',
+      agentRole: 'writer',
     })
   }
-  let result = await run('')
+
+  let result = await run('', true)
   let text = result?.trim() ?? ''
   if (text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
     const retry = await run(
-      '【重试】上一稿未体现核心剧情导向中的关键词。请改写，并至少自然融入其中一个导向词或禁忌相关物象（仍保持 1–2 句具体叙事）。'
+      '【重试】上一稿未体现核心剧情导向中的关键词。请改写，并至少自然融入其中一个导向词或禁忌相关物象（仍保持 1–2 句具体叙事）。',
+      false
     )
     if (retry?.trim()) text = retry.trim()
   }
@@ -91,7 +128,8 @@ export async function generateNodeNarrative(
     const retryTaboo = await run(
       list
         ? `【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，禁止直接写出或明显指涉以下禁忌词：${list}。若本节点有核心剧情导向，仍须至少融入其中一个导向词。`
-        : '【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，避开节点禁忌。'
+        : '【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，避开节点禁忌。',
+      false
     )
     if (retryTaboo?.trim()) text = retryTaboo.trim()
   }
@@ -109,6 +147,7 @@ export async function generateYishi(
   return chat(apiKey, [{ role: 'system', content: YISHI_SYSTEM }, { role: 'user', content: user }], {
     maxTokens: 256,
     label: 'generateYishi',
+    agentRole: 'yishi',
   })
 }
 
@@ -147,6 +186,7 @@ export async function generateChoices(
   const result = await chat(apiKey, [{ role: 'system', content: CHOICES_SYSTEM }, { role: 'user', content: user }], {
     maxTokens: 256,
     label: 'generateChoices',
+    agentRole: 'choice',
   })
   if (!result?.trim()) return []
   try {
@@ -159,6 +199,135 @@ export async function generateChoices(
       .slice(0, 2)
       .map((x) => ({ text: String(x.text).trim(), next: x.next }))
       .filter((x) => x.text.length > 0)
+  } catch {
+    return []
+  }
+}
+
+export interface GenerateDynamicNarrativeOptions {
+  hais?: Record<HaiId, number>
+  onStreamChunk?: (fullSoFar: string) => void
+  streamSignal?: AbortSignal
+}
+
+/**
+ * Engine v2: narrative for current beat using layered context + Director directive.
+ */
+export async function generateDynamicBeatNarrative(
+  apiKey: string,
+  layeredInput: LayeredContextInput,
+  stateFilter: StateFilter,
+  plotGuide: string[],
+  taboo: string[],
+  objective: string | undefined,
+  options?: GenerateDynamicNarrativeOptions
+): Promise<string | null> {
+  const layered = buildLayeredContext(layeredInput)
+  const block = layeredContextBlock(layered)
+  const statLabels = {
+    ming_zhu: statLabel('ming_zhu', stateFilter.ming_zhu),
+    gen_jiao: statLabel('gen_jiao', stateFilter.gen_jiao),
+    jian_zhao: statLabel('jian_zhao', stateFilter.jian_zhao),
+  }
+  const haisFull = normalizeHais(options?.hais)
+
+  const messagesFor = (extra: string): { role: string; content: string }[] => {
+    let user = buildDynamicNarrativeUserPrompt(block, statLabels, haisFull, plotGuide, taboo, objective)
+    if (extra) user += `\n\n${extra}`
+    return [
+      { role: 'system', content: NARRATIVE_SYSTEM },
+      { role: 'user', content: user },
+    ]
+  }
+
+  const run = async (extra: string, allowStream: boolean): Promise<string | null> => {
+    const msgs = messagesFor(extra)
+    if (allowStream && options?.onStreamChunk) {
+      return chatStream(apiKey, msgs, {
+        maxTokens: 400,
+        label: 'generateDynamicBeatNarrative',
+        agentRole: 'writer',
+        onChunk: options.onStreamChunk,
+        signal: options.streamSignal,
+      })
+    }
+    return chat(apiKey, msgs, {
+      maxTokens: 400,
+      label: 'generateDynamicBeatNarrative',
+      agentRole: 'writer',
+    })
+  }
+
+  let result = await run('', true)
+  let text = result?.trim() ?? ''
+  if (text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
+    const retry = await run(
+      '【重试】上一稿未体现核心剧情导向中的关键词。请改写，并至少自然融入其中一个导向词（仍保持 1–2 句具体叙事）。',
+      false
+    )
+    if (retry?.trim()) text = retry.trim()
+  }
+  if (text && taboo.length && violatesTaboo(text, taboo)) {
+    const list = taboo.map((t) => t.trim()).filter(Boolean).join('、')
+    const retryTaboo = await run(
+      list
+        ? `【重试】正文中出现了禁忌相关用语。请改写，禁止直接写出或明显指涉：${list}。`
+        : '【重试】正文中出现了禁忌相关用语。请改写。',
+      false
+    )
+    if (retryTaboo?.trim()) text = retryTaboo.trim()
+  }
+  return text || null
+}
+
+/** Engine v2: choices for dynamic beat; all branches share same next token unless last beat (__结案__). */
+export async function generateDynamicBeatChoices(
+  apiKey: string,
+  realmName: string,
+  sceneNarrative: string,
+  taboo: string[],
+  directions: string[],
+  beatIndex: number,
+  totalBeats: number
+): Promise<Choice[]> {
+  const isLastBeat = beatIndex >= Math.max(0, totalBeats - 1)
+  const validNextTokens = isLastBeat ? ['__结案__'] : [beatNextToken(beatIndex + 1)]
+  const user = buildDynamicChoicesUserPrompt({
+    realmName,
+    sceneNarrative: sceneNarrative.trim() || '（无）',
+    taboo,
+    directions: directions.length ? directions : ['前行', '停步', '辨位'],
+    validNextTokens,
+    isLastBeat,
+  })
+  const raw = await chat(apiKey, [{ role: 'system', content: DYNAMIC_CHOICES_SYSTEM }, { role: 'user', content: user }], {
+    maxTokens: 512,
+    label: 'generateDynamicBeatChoices',
+    agentRole: 'choice',
+  })
+  if (!raw?.trim()) return []
+  let text = raw.trim()
+  const fence = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(text)
+  if (fence) text = fence[1].trim()
+  try {
+    const parsed = JSON.parse(text) as unknown
+    const arr = Array.isArray(parsed) ? parsed : [parsed]
+    const valid = new Set(validNextTokens)
+    const out: Choice[] = []
+    for (const x of arr) {
+      if (!x || typeof x !== 'object') continue
+      const o = x as Record<string, unknown>
+      const t = typeof o.text === 'string' ? o.text.trim() : ''
+      const n = typeof o.next === 'string' ? o.next.trim() : ''
+      if (!t || !valid.has(n)) continue
+      const c: Choice = { text: t, next: n }
+      if (isLastBeat && typeof o.conclusion_label === 'string' && o.conclusion_label.trim()) {
+        c.conclusion_label = o.conclusion_label.trim()
+      }
+      if (violatesTaboo(t, taboo)) continue
+      out.push(c)
+    }
+    return out.filter((c) => (isLastBeat ? Boolean(c.conclusion_label) : true)).slice(0, 5)
   } catch {
     return []
   }

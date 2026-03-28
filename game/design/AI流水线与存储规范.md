@@ -159,6 +159,6 @@ game/
 
 ## 六、与现有系统关系
 
-- 游戏运行时仍加载 `public/data/prologue.json`、`skeleton.json`
+- 游戏运行时由 `public/data/manifest.json`（若存在）的 `chapters` 决定加载哪些 JSON，常见为 `prologue` + `skeleton` 等多 realm
 - AI 流水线为**离线/编辑时**流程：策划修改大纲 → 触发流水线 → 生成/更新 `prologue.json`
 - 流水线实现可单独成脚本或 CLI，与游戏主流程解耦

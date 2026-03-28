@@ -1,10 +1,13 @@
-import { GameState } from './state'
-import type { Skeleton, Choice, HaiId, Item, Clue, YishiEntry } from './types'
+import { GameState, type EngineMode } from './state'
+import type { Skeleton, Choice, HaiId, Item, Clue, YishiEntry, Node } from './types'
 import { DEFAULT_STATS, normalizeHais } from './types'
 import { itemFromId, clueFromId } from './catalog'
 import { createYishiEntry } from './aiOutput'
+import type { StoryOutline } from './storyRuntime'
+import type { WorldStateGraph } from './worldStateGraph'
+import { createEmptyWorldGraph, graphFromJSON } from './worldStateGraph'
 
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 export const SAVE_SLOT_COUNT = 5
 const LEGACY_KEY = 'anotherhistory_save'
 
@@ -39,13 +42,26 @@ export interface SaveDataV2 {
   stepsTaken: number
 }
 
-export type SaveData = SaveDataV2
+/** AI Engine v2 persistence */
+export interface SaveDataV3 extends SaveDataV2 {
+  version: 3
+  engineMode?: EngineMode
+  storyOutline?: StoryOutline | null
+  currentBeatIndex?: number | null
+  runtimeNodes?: Record<string, Node>
+  playthroughGeneration?: number
+  worldGraph?: WorldStateGraph
+  /** Carried for next Planner call when generation >= 2 */
+  lastPlaythroughSummary?: string
+}
+
+export type SaveData = SaveDataV3
 
 function emptyHais(): Record<HaiId, number> {
   return normalizeHais()
 }
 
-function migrateLegacy(raw: unknown): SaveDataV2 | null {
+function migrateLegacy(raw: unknown): SaveDataV3 | null {
   if (!raw || typeof raw !== 'object') return null
   const d = raw as Record<string, unknown>
   if (typeof d.version !== 'number' || d.version < 1) return null
@@ -67,9 +83,9 @@ function migrateLegacy(raw: unknown): SaveDataV2 | null {
         typeof x === 'string' ? createYishiEntry(x) : (x as YishiEntry)
       )
     : []
-  return {
+  const base: SaveDataV3 = {
     version: SAVE_VERSION,
-    slot: 0,
+    slot: typeof d.slot === 'number' ? d.slot : 0,
     realmId: (d.realmId as string | null) ?? null,
     currentNodeId: (d.currentNodeId as string | null) ?? null,
     stats: { ...(d.stats as Record<string, number>) },
@@ -80,12 +96,32 @@ function migrateLegacy(raw: unknown): SaveDataV2 | null {
     yishiEntries,
     stepsTaken: typeof d.stepsTaken === 'number' ? d.stepsTaken : 0,
   }
+  if (d.version >= 3) {
+    base.engineMode = (d.engineMode as EngineMode) === 'dynamic' ? 'dynamic' : 'skeleton'
+    base.storyOutline = (d.storyOutline as StoryOutline | null | undefined) ?? null
+    base.currentBeatIndex = typeof d.currentBeatIndex === 'number' ? d.currentBeatIndex : null
+    base.runtimeNodes =
+      d.runtimeNodes && typeof d.runtimeNodes === 'object' ? { ...(d.runtimeNodes as Record<string, Node>) } : {}
+    base.playthroughGeneration = typeof d.playthroughGeneration === 'number' ? d.playthroughGeneration : 0
+    base.worldGraph = d.worldGraph ? graphFromJSON(d.worldGraph) : createEmptyWorldGraph()
+    base.lastPlaythroughSummary =
+      typeof d.lastPlaythroughSummary === 'string' ? d.lastPlaythroughSummary : ''
+  } else {
+    base.engineMode = 'skeleton'
+    base.storyOutline = null
+    base.currentBeatIndex = null
+    base.runtimeNodes = {}
+    base.playthroughGeneration = 0
+    base.worldGraph = createEmptyWorldGraph()
+    base.lastPlaythroughSummary = ''
+  }
+  return base
 }
 
 export function saveGameState(game: GameState, slot = 0): void {
   const s = Math.max(0, Math.min(SAVE_SLOT_COUNT - 1, slot))
   try {
-    const data: SaveDataV2 = {
+    const data: SaveDataV3 = {
       version: SAVE_VERSION,
       slot: s,
       realmId: game.realmId,
@@ -97,6 +133,13 @@ export function saveGameState(game: GameState, slot = 0): void {
       choiceHistory: [...game.choiceHistory],
       yishiEntries: [...game.yishiEntries],
       stepsTaken: game.stepsTaken,
+      engineMode: game.engineMode,
+      storyOutline: game.storyOutline,
+      currentBeatIndex: game.currentBeatIndex,
+      runtimeNodes: { ...game.runtimeNodes },
+      playthroughGeneration: game.playthroughGeneration,
+      worldGraph: game.worldGraph,
+      lastPlaythroughSummary: game.lastPlaythroughSummary,
     }
     localStorage.setItem(slotKey(s), JSON.stringify(data))
     try {
@@ -213,14 +256,27 @@ export function restoreGameState(skeleton: Skeleton, data: SaveData): GameState 
     : []
   game.stepsTaken = typeof data.stepsTaken === 'number' ? data.stepsTaken : 0
 
+  const v3 = data as SaveDataV3
+  game.engineMode = v3.engineMode === 'dynamic' ? 'dynamic' : 'skeleton'
+  game.storyOutline = v3.storyOutline ?? null
+  game.currentBeatIndex = typeof v3.currentBeatIndex === 'number' ? v3.currentBeatIndex : null
+  game.runtimeNodes = v3.runtimeNodes && typeof v3.runtimeNodes === 'object' ? { ...v3.runtimeNodes } : {}
+  game.playthroughGeneration = typeof v3.playthroughGeneration === 'number' ? v3.playthroughGeneration : 0
+  game.worldGraph = v3.worldGraph ? graphFromJSON(v3.worldGraph) : createEmptyWorldGraph()
+  game.lastPlaythroughSummary =
+    typeof v3.lastPlaythroughSummary === 'string' ? v3.lastPlaythroughSummary : ''
+
   const realm = data.realmId ? skeleton.realms.find((r) => r.id === data.realmId) : null
   if (!realm) {
     game.startRealm()
     return game
   }
-  const nodeExists = realm.nodes.some((n) => n.node_id === game.currentNodeId)
+  const nodeExists =
+    (game.currentNodeId && game.runtimeNodes[game.currentNodeId!] != null) ||
+    realm.nodes.some((n) => n.node_id === game.currentNodeId)
   if (!nodeExists && realm.entry_node) {
     game.currentNodeId = realm.entry_node
+    game.clearDynamicStory()
   }
   return game
 }

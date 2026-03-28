@@ -1,1 +1,145 @@
-{"realms":[{"id":"ZheJiYuan","name":"折戟原","entry_node":"ZheJiYuan_01","nodes":[{"node_id":"ZheJiYuan_01","truth_anchors":["铁腥味","影子"],"taboo":["不可回头"],"objective":"抵达雾中真相或脱出","description":"大雾。你闻到一股[铁腥味]。不对，那是某种*肉质腐烂*的味道。\n你察觉到地上的影子在抖。雾气里浮现出很多门。","choices":[{"text":"憋气钻进那团铁青色的雾。","next":"ZheJiYuan_02","state":{"ming_zhu":-5,"gen_jiao":-10}},{"text":"闭上眼，顺着影子的拉力向后退。","next":"ZheJiYuan_02","state":{"jian_zhao":5}},{"text":"尝试看清雾中的真相。","next":"ZheJiYuan_02","state":{"jian_zhao":-10}}]},{"node_id":"ZheJiYuan_02","truth_anchors":["焚烧坑","草灰涂面"],"taboo":["不可回头"],"objective":"结案：获得异史线索【焚尸者言】","description":"雾散开一隙。你看见远处有[焚烧坑]，余烬未冷。\n有人曾在此[草灰涂面]，逆风而行。影子在地上扎了根。","choices":[{"text":"以灰涂面，逆风而行，离开此地。","next":"__结案__","state":{},"conclusion_label":"焚尸者言"},{"text":"伸手触碰余烬。","next":"ZheJiYuan_02_bad","state":{"ming_zhu":-20}},{"text":"回头张望来路。","next":"ZheJiYuan_02_bad","state":{"ming_zhu":-15,"gen_jiao":-15}}]},{"node_id":"ZheJiYuan_02_bad","truth_anchors":["铁腥味","影子"],"description":"你触犯了此地的因果。铁腥味再次涌来，影子缠上脚踝。\n命烛摇曳，根脚虚浮。","choices":[{"text":"勉强定神，以灰涂面逆风离开。","next":"__结案__","state":{"ming_zhu":-5},"conclusion_label":"焚尸者言（残缺）"},{"text":"继续试探。","next":"ZheJiYuan_02_bad","state":{"ming_zhu":-10}}]}]}]}
+{
+  "realms": [
+    {
+      "id": "ZheJiYuan",
+      "name": "折戟原",
+      "entry_node": "ZheJiYuan_01",
+      "planner_seed": {
+        "theme": "古战场残响、锈蚀与影",
+        "tension_curve": "压抑—显露—抉择",
+        "estimated_beats": 10,
+        "forbidden": ["不可回头"],
+        "anchors": [
+          {
+            "id": "enter_field",
+            "description": "进入折戟原，感知铁锈、雾与风声",
+            "position": "early",
+            "must_include": ["原野或雾原", "铁锈或兵戈意象"]
+          },
+          {
+            "id": "mist_and_doors",
+            "description": "大雾中铁腥味与抖动的影子，雾中多扇门与抉择",
+            "position": "early",
+            "must_include": ["雾", "门或歧路", "铁腥味", "影子"]
+          },
+          {
+            "id": "burn_pit_ash",
+            "description": "焚烧坑与草灰涂面、逆风而行的仪迹",
+            "position": "mid",
+            "must_include": ["焚烧坑", "草灰", "逆风"]
+          },
+          {
+            "id": "closure_burn_speaker",
+            "description": "结案：异史定名为焚尸者言",
+            "position": "late",
+            "must_include": ["封笔或离开", "结案感", "焚尸者言"]
+          },
+          {
+            "id": "violation_echo",
+            "description": "触犯禁忌后的反噬与残缺结案",
+            "position": "climax",
+            "must_include": ["因果反噬", "残缺或代价"]
+          }
+        ]
+      },
+      "nodes": [
+        {
+          "node_id": "ZheJiYuan_01",
+          "truth_anchors": [
+            "铁腥味",
+            "影子"
+          ],
+          "taboo": [
+            "不可回头"
+          ],
+          "objective": "抵达雾中真相或脱出",
+          "description": "大雾。你闻到一股[铁腥味]。不对，那是某种*肉质腐烂*的味道。\n你察觉到地上的影子在抖。雾气里浮现出很多门。",
+          "choices": [
+            {
+              "text": "憋气钻进那团铁青色的雾。",
+              "next": "ZheJiYuan_02",
+              "state": {
+                "ming_zhu": -5,
+                "gen_jiao": -10
+              }
+            },
+            {
+              "text": "闭上眼，顺着影子的拉力向后退。",
+              "next": "ZheJiYuan_02",
+              "state": {
+                "jian_zhao": 5
+              }
+            },
+            {
+              "text": "尝试看清雾中的真相。",
+              "next": "ZheJiYuan_02",
+              "state": {
+                "jian_zhao": -10
+              }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_02",
+          "truth_anchors": [
+            "焚烧坑",
+            "草灰涂面"
+          ],
+          "taboo": [
+            "不可回头"
+          ],
+          "objective": "结案：获得异史线索【焚尸者言】",
+          "description": "雾散开一隙。你看见远处有[焚烧坑]，余烬未冷。\n有人曾在此[草灰涂面]，逆风而行。影子在地上扎了根。",
+          "choices": [
+            {
+              "text": "以灰涂面，逆风而行，离开此地。",
+              "next": "__结案__",
+              "state": {},
+              "conclusion_label": "焚尸者言"
+            },
+            {
+              "text": "伸手触碰余烬。",
+              "next": "ZheJiYuan_02_bad",
+              "state": {
+                "ming_zhu": -20
+              }
+            },
+            {
+              "text": "回头张望来路。",
+              "next": "ZheJiYuan_02_bad",
+              "state": {
+                "ming_zhu": -15,
+                "gen_jiao": -15
+              }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_02_bad",
+          "truth_anchors": [
+            "铁腥味",
+            "影子"
+          ],
+          "description": "你触犯了此地的因果。铁腥味再次涌来，影子缠上脚踝。\n命烛摇曳，根脚虚浮。",
+          "choices": [
+            {
+              "text": "勉强定神，以灰涂面逆风离开。",
+              "next": "__结案__",
+              "state": {
+                "ming_zhu": -5
+              },
+              "conclusion_label": "焚尸者言（残缺）"
+            },
+            {
+              "text": "继续试探。",
+              "next": "ZheJiYuan_02_bad",
+              "state": {
+                "ming_zhu": -10
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

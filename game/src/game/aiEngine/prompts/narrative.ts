@@ -207,6 +207,16 @@ function buildStateEffects(statLabels: AIContext['statLabels']): string[] {
   return hints
 }
 
+const NARRATIVE_TAIL_RULES = `核心：叙事为游戏服务，极简点明处境。**所有描述必须具体**：只写具体动作、物象、身体反应；每个节点要有具体情节点或与前后衔接，有叙事趣味与逻辑。
+
+禁止抽象（一律不用）：
+- 「思绪在……中游走」「思绪游走」「心在……中」——禁止抽象主语（思绪、心、意识）与抽象环境（清晰的蓝天、宁静的环境）；必须具体到谁在做什么、什么物。例：❌「思绪在清晰的蓝天与宁静的环境中游走。」→ ✅「你抬头。天蓝，没云。」
+禁止浅白：渐渐/逐渐、感受到、内心觉察、熟悉又陌生、心跳回荡等；例 ❌「渐渐清醒的你，感受到……内心觉察这片熟悉又陌生的土地。」→ ✅「你醒了。风擦过。野地在脚边。」
+
+禁止：罗列场景元素、比喻句、固定套词（古道/书箱）；不列举选项、不解释玩法。只输出这段描述，不要选项或标题。
+
+【鉴照高亮】在 1–2 个关键信息（物象、动作、线索）处用 \`*关键词*\` 包裹，供鉴照高亮。鉴照清彻/混浊时显示，障目时不显示。例：\`草还挂着*露*。脚边是一条*土路*。\``
+
 export function buildNarrativeUserPrompt(ctx: AIContext): string {
   const sections: string[] = [
     `【境遇】${ctx.realmName}`,
@@ -228,15 +238,33 @@ export function buildNarrativeUserPrompt(ctx: AIContext): string {
 
 ${sections.join('\n')}
 
-核心：叙事为游戏服务，极简点明处境。**所有描述必须具体**：只写具体动作、物象、身体反应；每个节点要有具体情节点或与前后衔接，有叙事趣味与逻辑。
+${NARRATIVE_TAIL_RULES}`
+}
 
-禁止抽象（一律不用）：
-- 「思绪在……中游走」「思绪游走」「心在……中」——禁止抽象主语（思绪、心、意识）与抽象环境（清晰的蓝天、宁静的环境）；必须具体到谁在做什么、什么物。例：❌「思绪在清晰的蓝天与宁静的环境中游走。」→ ✅「你抬头。天蓝，没云。」
-禁止浅白：渐渐/逐渐、感受到、内心觉察、熟悉又陌生、心跳回荡等；例 ❌「渐渐清醒的你，感受到……内心觉察这片熟悉又陌生的土地。」→ ✅「你醒了。风擦过。野地在脚边。」
+/** Engine v2: layered context (L0–L5) + state/hai + plot/taboo. */
+export function buildDynamicNarrativeUserPrompt(
+  layeredBlock: string,
+  statLabels: AIContext['statLabels'],
+  hais: Record<HaiId, number>,
+  plotGuide: string[],
+  taboo: string[],
+  objective?: string
+): string {
+  const sections: string[] = [
+    layeredBlock,
+    plotGuide.length ? `【核心剧情导向】${JSON.stringify(plotGuide)}` : '',
+    taboo.length ? `【禁忌】描述中不可让角色触犯：${JSON.stringify(taboo)}` : '',
+    objective ? `【目标】${objective}` : '',
+    `【三相档位】命烛:${statLabels.ming_zhu} / 根脚:${statLabels.gen_jiao} / 鉴照:${statLabels.jian_zhao}`,
+    ...buildStateEffects(statLabels),
+    ...buildHaiEffects(hais),
+  ].filter(Boolean)
 
-禁止：罗列场景元素、比喻句、固定套词（古道/书箱）；不列举选项、不解释玩法。只输出这段描述，不要选项或标题。
+  return `你扮演《行旅》的叙事引擎。根据以下分层语境写 1–2 句叙事，点明当前处境即可，然后交给选项。
 
-【鉴照高亮】在 1–2 个关键信息（物象、动作、线索）处用 \`*关键词*\` 包裹，供鉴照高亮。鉴照清彻/混浊时显示，障目时不显示。例：\`草还挂着*露*。脚边是一条*土路*。\``
+${sections.join('\n')}
+
+${NARRATIVE_TAIL_RULES}`
 }
 
 export const NARRATIVE_SYSTEM =

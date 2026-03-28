@@ -44,5 +44,48 @@
       "taboo": ["庙", "回头"],
       "expectViolates": false
     }
+  ],
+  "verifyCases": [
+    {
+      "id": "verify_ok",
+      "text": "折戟原上雾浓，铁锈味贴鼻。",
+      "plotGuide": ["折戟原"],
+      "taboo": [],
+      "expectOk": true
+    },
+    {
+      "id": "verify_empty",
+      "text": "   ",
+      "plotGuide": [],
+      "taboo": [],
+      "expectOk": false
+    },
+    {
+      "id": "verify_taboo_fail",
+      "text": "你推开庙门。",
+      "plotGuide": ["路"],
+      "taboo": ["庙"],
+      "expectOk": false
+    }
+  ],
+  "outlineCases": [
+    {
+      "id": "outline_valid_min",
+      "realmId": "prologue",
+      "json": "{\"realm_id\":\"prologue\",\"beats\":[{\"beat_id\":\"b1\",\"type\":\"setup\",\"summary\":\"醒来\",\"tension\":0.2},{\"beat_id\":\"b2\",\"type\":\"rising\",\"summary\":\"辨路\",\"tension\":0.4},{\"beat_id\":\"b3\",\"type\":\"climax\",\"summary\":\"异象\",\"tension\":0.8}]}",
+      "expectOk": true
+    },
+    {
+      "id": "outline_wrong_realm",
+      "realmId": "prologue",
+      "json": "{\"realm_id\":\"other\",\"beats\":[{\"beat_id\":\"b1\",\"type\":\"setup\",\"summary\":\"a\",\"tension\":0.1},{\"beat_id\":\"b2\",\"type\":\"rising\",\"summary\":\"b\",\"tension\":0.2},{\"beat_id\":\"b3\",\"type\":\"rising\",\"summary\":\"c\",\"tension\":0.3}]}",
+      "expectOk": false
+    },
+    {
+      "id": "outline_too_few_beats",
+      "realmId": "prologue",
+      "json": "{\"realm_id\":\"prologue\",\"beats\":[{\"beat_id\":\"b1\",\"type\":\"setup\",\"summary\":\"only\",\"tension\":0.5}]}",
+      "expectOk": false
+    }
   ]
 }

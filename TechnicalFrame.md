@@ -78,15 +78,16 @@
 - **职责**：根据玩家选择推进节点；执行门禁判定（物证/线索/状态）；计算命烛/根脚/鉴照与害的增减；在适当时机触发「结案」「归档异史」；检查结局条件并跳转结局。
 - **与 GDD 对应**：入界、感应、抉择、结案与归档、状态演算、剧情门禁、因果收束。
 
-### 4.3 AI 叙事引擎（AI Bridge → 完整引擎）
+### 4.3 AI 叙事引擎（`aiEngine/` + `aiBridge`）
 
-> 完整设计见 **GDD 5.5**。当前实现仅为雏形（两个裸 prompt），需逐步扩展为完整引擎。
+> 完整设计见 **GDD 5.5**。当前仓库已落地分层实现（非雏形）：`game/src/game/aiEngine/`（`chat`、`dataAcquisition`、各场景 `prompts`），`aiBridge.ts` 为对外兼容入口；细则与完成度见根目录 **TODO.md**。
 
-- **数据获取**：从骨架、GameState（三相+害）、物证、线索、卷轴、抉择历史聚合 `AIContext`，供各场景使用。
-- **数据修改**：解析 AI 输出（叙事、选项、异史及标签），反写 GameState；物证/线索获得可由约定格式或骨架配置触发。
-- **叙事上下文管理**：维护界/事件内关键事实摘要；害/鉴照影响上下文截断与噪音注入。
-- **场景化提示词**：主叙事、异史凝练、感应念头、物品描述、剧情人物等独立模板，版本化管理（`prompts/`）。
-- **与策划内容的交互**：门禁前置判定；真理锚点/禁忌校验；选项后果（state、next、conclusion）由骨架与 Narrative Engine 控制。
+- **数据获取**：从骨架、GameState（三相+害）、物证、线索、卷轴、抉择历史、`NarrativeContextManager` 摘要聚合上下文。
+- **数据修改**：数值与门禁仍以骨架 + `GameState.applyChoice` 为准；AI 主要改**展示层**叙事与补念文案；异史经凝练后写入卷轴条目。
+- **叙事上下文管理**：事实条数/字数上限；灵损只劣化注入模型的摘要；鉴照混浊等进 prompt。
+- **场景化提示词**：主叙事、异史、补念等模板在 `prompts/`；叙事含 plot_guide 校验重试与禁忌重试；补念在叙事成稿后请求并带入【当前境遇正文】。
+- **与策划内容的交互**：门禁、`violatesTaboo`、选项后果（state、next、conclusion）由骨架与状态机控制。
+- **Engine v2（即时生成 + 降级）**：`public/data/design-seed.json` 供 `runPlanner` 生成 `StoryOutline`；每拍 `runDirector` 产出 `NodeDirective`；`contextAssembly` 分层语境（L0–L5）；`generateDynamicBeatNarrative` / `generateDynamicBeatChoices` 驱动 `dyn:{realm}:{beat}` 节点；`WorldStateGraph` 写入 `GameState.worldGraph` 并随存档 **SaveData v3** 持久化。Planner/API 失败时保持 **骨架遍历**（`engineMode: skeleton`）。
 
 ### 4.4 State Manager（状态管理）
 

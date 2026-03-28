@@ -2,6 +2,12 @@ import type { Skeleton, Node, Choice, StatKey, HaiId, Item, Clue, YishiEntry } f
 import { DEFAULT_STATS, MING_ZHU, GEN_JIAO, JIAN_ZHAO, HAI_IDS, normalizeHais } from './types'
 import { itemFromId, clueFromId } from './catalog'
 import { createYishiEntry } from './aiOutput'
+import type { StoryOutline } from './storyRuntime'
+import { parseBeatNext, dynamicNodeId } from './storyRuntime'
+import type { RealmSeed } from './designSeed'
+import { createEmptyWorldGraph, WorldStateGraphManager, type WorldStateGraph, type GraphEvent } from './worldStateGraph'
+
+export type EngineMode = 'skeleton' | 'dynamic'
 
 function clampStats(stats: Record<StatKey, number>): void {
   ;([MING_ZHU, GEN_JIAO, JIAN_ZHAO] as const).forEach((k) => {
@@ -71,6 +77,18 @@ export class GameState {
   yishiEntries: YishiEntry[]
   /** 累计抉择步数（亡史系等） */
   stepsTaken: number
+  /** AI Engine v2 */
+  engineMode: EngineMode
+  storyOutline: StoryOutline | null
+  currentBeatIndex: number | null
+  /** Runtime-generated nodes (dynamic mode); keyed by node_id */
+  runtimeNodes: Record<string, Node>
+  /** Increments on each new game (for Planner divergence) */
+  playthroughGeneration: number
+  /** Persisted episodic graph (Engine v2 memory) */
+  worldGraph: WorldStateGraph
+  /** Snapshot for Planner when playthroughGeneration >= 2 (filled in startRealm before graph reset). */
+  lastPlaythroughSummary: string
 
   constructor(skeleton: Skeleton) {
     this.skeleton = skeleton
@@ -83,6 +101,54 @@ export class GameState {
     this.choiceHistory = []
     this.yishiEntries = []
     this.stepsTaken = 0
+    this.engineMode = 'skeleton'
+    this.storyOutline = null
+    this.currentBeatIndex = null
+    this.runtimeNodes = {}
+    this.playthroughGeneration = 0
+    this.worldGraph = createEmptyWorldGraph()
+    this.lastPlaythroughSummary = ''
+  }
+
+  clearDynamicStory(): void {
+    this.engineMode = 'skeleton'
+    this.storyOutline = null
+    this.currentBeatIndex = null
+    this.runtimeNodes = {}
+  }
+
+  /** After startRealm; outline.realm_id must match current realm. Registers stub node so getCurrentNode is non-null. */
+  beginDynamicStory(outline: StoryOutline, realmSeed?: RealmSeed | null): boolean {
+    if (!this.realmId || outline.realm_id !== this.realmId || !outline.beats?.length) return false
+    this.engineMode = 'dynamic'
+    this.storyOutline = outline
+    this.currentBeatIndex = 0
+    this.currentNodeId = dynamicNodeId(this.realmId, 0)
+    this.runtimeNodes = {}
+    this.worldGraph = createEmptyWorldGraph()
+    const b0 = outline.beats[0]
+    const plotGuide: string[] = [b0?.summary ?? '开篇']
+    const anchor = realmSeed?.anchors?.find((a) => a.id === b0?.anchor_ref)
+    if (anchor?.must_include?.length) plotGuide.push(...anchor.must_include)
+    const taboo = realmSeed?.forbidden?.length ? [...realmSeed.forbidden] : []
+    this.registerRuntimeNode({
+      node_id: this.currentNodeId,
+      description: '',
+      plot_guide: plotGuide,
+      taboo,
+      choices: [],
+    })
+    return true
+  }
+
+  registerRuntimeNode(node: Node): void {
+    this.runtimeNodes[node.node_id] = node
+  }
+
+  appendWorldGraphEvent(partial: Omit<GraphEvent, 'id' | 'step'> & { id?: string }): void {
+    const m = new WorldStateGraphManager(this.worldGraph)
+    m.appendEvent(partial)
+    this.worldGraph = m.getSnapshot()
   }
 
   get realmName(): string {
@@ -104,6 +170,10 @@ export class GameState {
       ? this.skeleton.realms.find((r) => r.id === realmId)
       : this.skeleton.realms[0]
     if (!realm?.entry_node) return false
+    if (this.worldGraph.events.length > 0) {
+      const mgr = new WorldStateGraphManager(this.worldGraph)
+      this.lastPlaythroughSummary = mgr.summaryForPrompt(0, 600)
+    }
     this.realmId = realm.id
     this.currentNodeId = realm.entry_node
     this.stats = { ...DEFAULT_STATS }
@@ -113,6 +183,9 @@ export class GameState {
     this.choiceHistory = []
     this.yishiEntries = []
     this.stepsTaken = 0
+    this.playthroughGeneration += 1
+    this.clearDynamicStory()
+    this.worldGraph = createEmptyWorldGraph()
     return true
   }
 
@@ -122,6 +195,8 @@ export class GameState {
     if (!realm?.entry_node) return false
     this.realmId = realm.id
     this.currentNodeId = realm.entry_node
+    this.clearDynamicStory()
+    this.worldGraph = createEmptyWorldGraph()
     return true
   }
 
@@ -138,6 +213,8 @@ export class GameState {
 
   getCurrentNode(): Node | null {
     if (!this.currentNodeId) return null
+    const rt = this.runtimeNodes[this.currentNodeId]
+    if (rt) return rt
     for (const realm of this.skeleton.realms) {
       const node = realm.nodes.find((n) => n.node_id === this.currentNodeId!)
       if (node) return node
@@ -194,6 +271,26 @@ export class GameState {
       if (penalty > 0) this.stats.jian_zhao = Math.max(0, this.stats.jian_zhao - penalty)
       this.currentNodeId = null
       return { nextNodeId: null, conclusionLabel: conclusion }
+    }
+    const beatJump = parseBeatNext(nextId)
+    if (this.engineMode === 'dynamic' && beatJump !== null && this.realmId) {
+      this.currentBeatIndex = beatJump
+      this.currentNodeId = dynamicNodeId(this.realmId, beatJump)
+      const outline = this.storyOutline
+      const beat = outline?.beats[beatJump]
+      if (beat && !this.runtimeNodes[this.currentNodeId]) {
+        const prevId = beatJump > 0 ? dynamicNodeId(this.realmId, beatJump - 1) : null
+        const prevNode = prevId ? this.runtimeNodes[prevId] : null
+        const taboo = prevNode?.taboo?.length ? [...prevNode.taboo] : []
+        this.registerRuntimeNode({
+          node_id: this.currentNodeId,
+          description: '',
+          plot_guide: [beat.summary],
+          taboo,
+          choices: [],
+        })
+      }
+      return { nextNodeId: this.currentNodeId, conclusionLabel: null }
     }
     if (nextId && nextId !== '__结案__') this.currentNodeId = nextId
     return { nextNodeId: this.currentNodeId, conclusionLabel: null }

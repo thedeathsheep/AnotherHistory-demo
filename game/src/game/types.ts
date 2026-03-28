@@ -167,11 +167,30 @@ export interface Node {
   unlock_clue?: string
 }
 
+/** Optional Engine v2 Planner fields merged from skeleton into design-seed at runtime. */
+export type PlannerAnchorPosition = 'early' | 'mid' | 'late' | 'climax'
+
+export interface RealmPlannerSeed {
+  theme?: string
+  tension_curve?: string
+  estimated_beats?: number
+  forbidden?: string[]
+  anchors?: Array<{
+    id: string
+    description: string
+    position: PlannerAnchorPosition
+    must_include: string[]
+    unlocks?: string[]
+  }>
+}
+
 export interface Realm {
   id: string
   name: string
   entry_node: string
   nodes: Node[]
+  /** When present, merged into DesignSeed.realms for this id (single source with narrative nodes). */
+  planner_seed?: RealmPlannerSeed
 }
 
 export interface Skeleton {

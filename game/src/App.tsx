@@ -20,9 +20,23 @@ import {
   findFirstOccupiedSlot,
   hydrateSlotsFromElectron,
 } from '@/game/save'
+import { isAiEngineV2Enabled } from '@/game/aiEngine/v2Enabled'
+import { WorldStateGraphManager, graphFromJSON } from '@/game/worldStateGraph'
 import { evaluateEnding, getEnding } from '@/game/endings'
 import type { Skeleton, Node, Choice } from '@/game/types'
-import { generateNodeNarrative, generateYishi, generateChoices, AI_DEBUG } from '@/game/aiBridge'
+import {
+  generateNodeNarrative,
+  generateYishi,
+  generateChoices,
+  generateDynamicBeatNarrative,
+  generateDynamicBeatChoices,
+  runPlanner,
+  runDirector,
+  AI_DEBUG,
+  type LayeredContextInput,
+} from '@/game/aiBridge'
+import { loadDesignSeed, realmSeedById } from '@/game/designSeed'
+import { beatNextToken, directorGateHintToNodeGatePatch, type NodeDirective } from '@/game/storyRuntime'
 import { getApiKey } from '@/config'
 import { NarrativeBox } from '@/components/NarrativeBox'
 import { StatusBox } from '@/components/StatusBox'
@@ -32,6 +46,8 @@ import { Overlay } from '@/components/Overlay'
 import { ItemBox } from '@/components/ItemBox'
 import { ClueBox } from '@/components/ClueBox'
 import { InteractionBox } from '@/components/InteractionBox'
+import { AiDebugOverlay } from '@/components/AiDebugOverlay'
+import { emitAiDebug } from '@/game/aiEngine/aiDebugBus'
 import { NarrativeContextManager } from '@/game/narrativeContext'
 
 type FlyState = {
@@ -47,6 +63,23 @@ type Panel = null | 'items' | 'clues' | 'menu' | 'yishi'
 const AI_BODY_LOADING_HINT = '境遇正文凝练中…'
 /** 正文未出时不占位展示选项，仅作说明 */
 const SENSE_AFTER_BODY_HINT = '待正文落定，感应方显。'
+
+async function tryBeginDynamicStory(g: GameState, apiKey: string | null): Promise<void> {
+  if (!isAiEngineV2Enabled() || !apiKey || !g.realmId) return
+  const seed = await loadDesignSeed(g.skeleton)
+  const rs = realmSeedById(seed, g.realmId)
+  if (!seed || !rs) return
+  const hint =
+    g.playthroughGeneration >= 2
+      ? (g.lastPlaythroughSummary || g.getChoiceSummaryForYishi()).trim() || undefined
+      : undefined
+  try {
+    const outline = await runPlanner(apiKey, seed, g.realmId, hint)
+    if (outline) g.beginDynamicStory(outline, rs)
+  } catch {
+    /* keep skeleton */
+  }
+}
 
 export default function App() {
   const [skeleton, setSkeleton] = useState<Skeleton | null>(null)
@@ -69,6 +102,8 @@ export default function App() {
   const pendingYishiRef = useRef<HTMLButtonElement>(null)
   const lastEntryRef = useRef<HTMLLIElement>(null)
   const narrativeCtxRef = useRef(new NarrativeContextManager())
+  const directiveRef = useRef<NodeDirective | null>(null)
+  const [streamBody, setStreamBody] = useState<{ nid: string; text: string } | null>(null)
   const forceUpdate = () => setTick((t) => t + 1)
 
   const [pendingStartChoice, setPendingStartChoice] = useState<boolean | null>(null)
@@ -91,13 +126,18 @@ export default function App() {
           setSkeleton(sk)
           setApiKey(key)
           refreshSaveSummaries()
-          if (AI_DEBUG) console.log('[App] API key loaded:', key ? `yes (${key.slice(0, 8)}…)` : 'no')
+          if (AI_DEBUG) {
+            const m = `API key loaded: ${key ? `yes (${key.slice(0, 8)}…)` : 'no'}`
+            console.log(`[App] ${m}`)
+            emitAiDebug(`[App] ${m}`, 'log')
+          }
           if (hasSave()) {
             setPendingStartChoice(true)
           } else {
             const g = new GameState(sk)
             g.startRealm()
             narrativeCtxRef.current.clear()
+            await tryBeginDynamicStory(g, key)
             setGame(g)
           }
         }
@@ -133,8 +173,9 @@ export default function App() {
   const node = game?.getCurrentNode() ?? null
   const currentNodeId = node?.node_id ?? null
   const realmName = game?.realmName ?? ''
+  const isDynamicBeat = Boolean(game?.engineMode === 'dynamic' && node?.node_id?.startsWith('dyn:'))
   const useAi = Boolean(
-    apiKey && (node?.plot_guide ?? node?.truth_anchors)?.length
+    apiKey && (isDynamicBeat || (node?.plot_guide ?? node?.truth_anchors)?.length)
   )
 
   useEffect(() => {
@@ -148,33 +189,164 @@ export default function App() {
     if (cachedNarrative[nid] !== undefined) return
 
     let cancelled = false
-    setNarrativeLoading(true)
-    if (AI_DEBUG) console.log('[App] Trigger AI narrative for node:', nid)
-    refreshNodeNarrative(node)
-      .then((desc) => {
+    const isDyn = game.engineMode === 'dynamic' && nid.startsWith('dyn:')
+
+    const runSkeleton = (): void => {
+      setNarrativeLoading(true)
+      if (AI_DEBUG) {
+        const m = `Trigger AI narrative for node: ${nid}`
+        console.log(`[App] ${m}`)
+        emitAiDebug(`[App] ${m}`, 'log')
+      }
+      refreshNodeNarrative(node)
+        .then((desc) => {
+          if (!cancelled) {
+            const fallback = node.description?.trim() || node.story_beat || '（叙事加载失败）'
+            setCachedNarrative((prev) => ({ ...prev, [nid]: desc || fallback }))
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setNarrativeLoading(false)
+        })
+    }
+
+    const runDynamic = async (): Promise<void> => {
+      setNarrativeLoading(true)
+      setStreamBody({ nid, text: '' })
+      try {
+        const outline = game.storyOutline
+        const beatIndex = game.currentBeatIndex ?? 0
+        if (!outline?.beats?.length) {
+          setStreamBody(null)
+          runSkeleton()
+          return
+        }
+        const seed = await loadDesignSeed(game.skeleton)
+        const mgr = new WorldStateGraphManager(game.worldGraph)
+        const pendingFs = mgr.pendingForeshadowingsForPrompt(beatIndex)
+        const playerLine = `命烛${game.stats.ming_zhu}/根脚${game.stats.gen_jiao}/鉴照${game.stats.jian_zhao}；物证：${game.items.map((i) => i.name).join('、') || '无'}；线索：${game.clues.map((c) => c.name).join('、') || '无'}`
+        const dir = await runDirector(
+          apiKey,
+          game.realmName,
+          outline,
+          beatIndex,
+          mgr.summaryForPrompt(game.hais.ling_sun ?? 0),
+          mgr.entitySummary(),
+          playerLine,
+          pendingFs
+        )
+        directiveRef.current = dir
+        if (dir?.foreshadowing?.trim()) mgr.addForeshadowing(dir.foreshadowing.trim(), beatIndex)
+        if (dir?.callback?.trim()) mgr.markResolvedByCallback(dir.callback.trim())
+        game.worldGraph = mgr.getSnapshot()
+        const layeredInput: LayeredContextInput = {
+          designSeed: seed,
+          outline,
+          beatIndex,
+          worldGraph: mgr,
+          lingSunLevel: game.hais.ling_sun ?? 0,
+          playerStateLine: playerLine,
+          directive: dir,
+        }
+        const stateFilter = {
+          ming_zhu: game.stats.ming_zhu,
+          gen_jiao: game.stats.gen_jiao,
+          jian_zhao: game.stats.jian_zhao,
+        }
+        const plotGuide = [...(node.plot_guide ?? node.truth_anchors ?? [])]
+        const taboo = node.taboo ?? []
+        const text = await generateDynamicBeatNarrative(apiKey, layeredInput, stateFilter, plotGuide, taboo, node.objective, {
+          hais: game.hais,
+          onStreamChunk: (full) => {
+            if (!cancelled) setStreamBody({ nid, text: full })
+          },
+        })
+        if (cancelled) return
+        const body = text?.trim() || node.description?.trim() || '（叙事加载失败）'
+        const gatePatch = directorGateHintToNodeGatePatch(dir?.gate_hint)
+        game.registerRuntimeNode({
+          ...node,
+          ...gatePatch,
+          description: body,
+          plot_guide: plotGuide.length ? plotGuide : ['境遇'],
+          taboo,
+        })
+        setCachedNarrative((prev) => ({ ...prev, [nid]: body }))
+      } catch {
         if (!cancelled) {
           const fallback = node.description?.trim() || node.story_beat || '（叙事加载失败）'
-          setCachedNarrative((prev) => ({ ...prev, [nid]: desc || fallback }))
+          setCachedNarrative((prev) => ({ ...prev, [nid]: fallback }))
         }
-      })
-      .finally(() => {
-        if (!cancelled) setNarrativeLoading(false)
-      })
-    return () => { cancelled = true }
+      } finally {
+        if (!cancelled) {
+          setStreamBody(null)
+          setNarrativeLoading(false)
+        }
+      }
+    }
+
+    if (isDyn) void runDynamic()
+    else runSkeleton()
+
+    return () => {
+      cancelled = true
+    }
   }, [loading, skeleton, game, currentNodeId, useAi, apiKey, node, refreshNodeNarrative, cachedNarrative])
 
   useEffect(() => {
-    if (loading || !game || !node || !apiKey || !node.choices?.length) return
+    if (loading || !game || !node || !apiKey) return
     if (node && !game.canEnterNode(node)) return
     const nid = node.node_id
     if (cachedAiChoices[nid] !== undefined) return
 
-    const nodeUseAi = Boolean(apiKey && (node.plot_guide ?? node.truth_anchors)?.length)
+    const isDyn = game.engineMode === 'dynamic' && nid.startsWith('dyn:')
+    if (!isDyn && !node.choices?.length) return
+
+    const nodeUseAi = Boolean(apiKey && (isDyn || (node.plot_guide ?? node.truth_anchors)?.length))
     if (nodeUseAi && cachedNarrative[nid] === undefined) return
 
     let cancelled = false
     setChoicesLoading(true)
-    if (AI_DEBUG) console.log('[App] Trigger AI choices for node:', nid)
+    if (AI_DEBUG) {
+      const m = `Trigger AI choices for node: ${nid}`
+      console.log(`[App] ${m}`)
+      emitAiDebug(`[App] ${m}`, 'log')
+    }
+
+    if (isDyn) {
+      const outline = game.storyOutline
+      const beatIndex = game.currentBeatIndex ?? 0
+      const total = outline?.beats?.length ?? 1
+      const isLast = beatIndex >= total - 1
+      const sceneNarrative = cachedNarrative[nid] ?? ''
+      const directions = directiveRef.current?.choices_hint?.directions?.length
+        ? directiveRef.current.choices_hint.directions
+        : ['前行', '停步', '辨位']
+      generateDynamicBeatChoices(apiKey, game.realmName, sceneNarrative, node.taboo ?? [], directions, beatIndex, total)
+        .then((dynChoices) => {
+          if (cancelled) return
+          let choices = dynChoices
+          if (!choices.length) {
+            if (isLast) {
+              choices = [{ text: '封笔归档', next: '__结案__', conclusion_label: '行旅收束' }]
+            } else {
+              choices = [{ text: '继续前行', next: beatNextToken(beatIndex + 1) }]
+            }
+          }
+          const cur = game.getCurrentNode()
+          if (cur) game.registerRuntimeNode({ ...cur, choices })
+          setCachedAiChoices((prev) => ({ ...prev, [nid]: [] }))
+          saveGameState(game, activeSaveSlot)
+          forceUpdate()
+        })
+        .finally(() => {
+          if (!cancelled) setChoicesLoading(false)
+        })
+      return () => {
+        cancelled = true
+      }
+    }
+
     const requireItemThought = game.items.length > 0
     const sceneNarrative = nodeUseAi
       ? cachedNarrative[nid]
@@ -192,8 +364,10 @@ export default function App() {
       .finally(() => {
         if (!cancelled) setChoicesLoading(false)
       })
-    return () => { cancelled = true }
-  }, [loading, game, node, apiKey, cachedAiChoices, cachedNarrative])
+    return () => {
+      cancelled = true
+    }
+  }, [loading, game, node, apiKey, cachedAiChoices, cachedNarrative, activeSaveSlot])
 
   const handleRegenerateGenerated = async () => {
     if (!window.electronAPI?.regenerateGenerated || regenerating) return
@@ -234,6 +408,8 @@ export default function App() {
       if (!game) return
       if (game.realmId === realmId) return
       if (!game.enterRealm(realmId)) return
+      directiveRef.current = null
+      setStreamBody(null)
       setCachedNarrative({})
       setCachedAiChoices({})
       setDianPoRemovedIndex(null)
@@ -246,11 +422,14 @@ export default function App() {
         acquireTimerRef.current = null
       }
       narrativeCtxRef.current.appendFact(`入界：${game.realmName}`)
-      saveGameState(game, activeSaveSlot)
+      void tryBeginDynamicStory(game, apiKey).finally(() => {
+        saveGameState(game, activeSaveSlot)
+        forceUpdate()
+      })
       setPanel(null)
       forceUpdate()
     },
-    [game, activeSaveSlot]
+    [game, activeSaveSlot, apiKey]
   )
 
   useEffect(() => {
@@ -281,14 +460,34 @@ export default function App() {
 
   const handleStartNewGame = () => {
     if (!skeleton) return
+    let carryGen = 0
+    let carrySummary = ''
+    const slotToRead = findFirstOccupiedSlot()
+    const prevData = loadSaveData(slotToRead)
+    if (prevData) {
+      carryGen = prevData.playthroughGeneration ?? 0
+      const wg = prevData.worldGraph
+      if (wg && Array.isArray(wg.events) && wg.events.length > 0) {
+        carrySummary = new WorldStateGraphManager(graphFromJSON(wg)).summaryForPrompt(0, 600)
+      } else if (typeof prevData.lastPlaythroughSummary === 'string' && prevData.lastPlaythroughSummary.trim()) {
+        carrySummary = prevData.lastPlaythroughSummary.trim()
+      }
+    }
     clearSave()
     narrativeCtxRef.current.clear()
+    directiveRef.current = null
+    setStreamBody(null)
     const g = new GameState(skeleton)
+    g.playthroughGeneration = carryGen
+    g.lastPlaythroughSummary = carrySummary
     g.startRealm()
+    setCachedNarrative({})
+    setCachedAiChoices({})
     setGame(g)
     setActiveSaveSlot(0)
     setPendingStartChoice(false)
     refreshSaveSummaries()
+    void tryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
   }
 
   if (loading || !skeleton || (pendingStartChoice && !game)) {
@@ -341,17 +540,21 @@ export default function App() {
   /** 有 AI 叙事且尚未写入缓存（含 effect 首帧尚未 set narrativeLoading 时） */
   const narrativeAwaitingAi =
     Boolean(node && useAi && cachedNarrative[node.node_id] === undefined)
+  const streamLine =
+    streamBody && node && streamBody.nid === node.node_id ? streamBody.text : ''
   const narrativeContent = yishiLoading
     ? (yishiHint || '正在整理行旅……')
     : gateBlocked
       ? '【无法进入】条件未满足，无法感应此境。'
-      : node && useAi && cachedNarrative[node.node_id] !== undefined
-        ? cachedNarrative[node.node_id]
-        : node
-          ? narrativeAwaitingAi || narrativeLoading
-            ? AI_BODY_LOADING_HINT
-            : node.description
-          : ''
+      : node && streamLine
+        ? streamLine
+        : node && useAi && cachedNarrative[node.node_id] !== undefined
+          ? cachedNarrative[node.node_id]
+          : node
+            ? narrativeAwaitingAi || narrativeLoading
+              ? AI_BODY_LOADING_HINT
+              : node.description
+            : ''
 
   const isConclusion = !node && game?.yishiEntries.length && !pendingYishi
   const endingId = isConclusion ? evaluateEnding(game) : null
@@ -402,6 +605,11 @@ export default function App() {
       }, 4500)
     }
     narrativeCtxRef.current.appendFact(`${node.node_id}：${choice.text}`)
+    game.appendWorldGraphEvent({
+      summary: `${node.node_id}：${choice.text}`,
+      choice_text: choice.text,
+      beat_id: game.currentBeatIndex != null ? String(game.currentBeatIndex) : undefined,
+    })
     saveGameState(game, activeSaveSlot)
     setDianPoRemovedIndex(null)
     forceUpdate()
@@ -483,13 +691,23 @@ export default function App() {
   }
 
   const handleRestart = () => {
+    if (!game || !skeleton) return
     clearSave(activeSaveSlot)
     narrativeCtxRef.current.clear()
+    directiveRef.current = null
+    setStreamBody(null)
+    const prev = game
     const g = new GameState(skeleton)
+    g.playthroughGeneration = prev.playthroughGeneration
+    if (prev.worldGraph.events.length > 0) {
+      g.lastPlaythroughSummary = new WorldStateGraphManager(prev.worldGraph).summaryForPrompt(0, 600)
+    } else {
+      g.lastPlaythroughSummary = prev.lastPlaythroughSummary || ''
+    }
     g.startRealm()
-    setGame(g)
     setCachedNarrative({})
     setCachedAiChoices({})
+    setGame(g)
     setPendingYishi(null)
     setFlyState(null)
     setDianPoRemovedIndex(null)
@@ -499,6 +717,7 @@ export default function App() {
       acquireTimerRef.current = null
     }
     refreshSaveSummaries()
+    void tryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
   }
 
   const handleDianPo = () => {
@@ -563,6 +782,7 @@ export default function App() {
             content={showNarrativeContent}
             className="flex-1 min-h-[200px]"
             jianZhaoLevel={game ? (statLabel('jian_zhao', game.stats.jian_zhao) as '清彻' | '混浊' | '障目') : undefined}
+            streaming={Boolean(node && streamBody?.nid === node.node_id && narrativeLoading)}
             reserveFooter={!node}
             footerAction={
               pendingYishi !== null ? (
@@ -746,14 +966,35 @@ export default function App() {
             refreshSaveSummaries()
           }}
           onNewGameAll={() => {
+            if (!skeleton) return
+            let carryGen = 0
+            let carrySummary = ''
+            const slotToRead = findFirstOccupiedSlot()
+            const prevData = loadSaveData(slotToRead)
+            if (prevData) {
+              carryGen = prevData.playthroughGeneration ?? 0
+              const wg = prevData.worldGraph
+              if (wg && Array.isArray(wg.events) && wg.events.length > 0) {
+                carrySummary = new WorldStateGraphManager(graphFromJSON(wg)).summaryForPrompt(0, 600)
+              } else if (typeof prevData.lastPlaythroughSummary === 'string' && prevData.lastPlaythroughSummary.trim()) {
+                carrySummary = prevData.lastPlaythroughSummary.trim()
+              }
+            }
             clearSave()
             narrativeCtxRef.current.clear()
+            directiveRef.current = null
+            setStreamBody(null)
             const g = new GameState(skeleton)
+            g.playthroughGeneration = carryGen
+            g.lastPlaythroughSummary = carrySummary
             g.startRealm()
+            setCachedNarrative({})
+            setCachedAiChoices({})
             setGame(g)
             setActiveSaveSlot(0)
             setPanel(null)
             refreshSaveSummaries()
+            void tryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
           }}
           realms={skeleton.realms.map((r) => ({ id: r.id, name: r.name }))}
           currentRealmId={game.realmId}
@@ -794,6 +1035,8 @@ export default function App() {
           </div>,
           document.body
         )}
+
+      <AiDebugOverlay />
     </div>
   )
 }
