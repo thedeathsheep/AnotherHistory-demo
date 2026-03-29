@@ -17,6 +17,8 @@ interface Props {
   currentRealmId: string | null
   onEnterRealm: (realmId: string) => void
   realmSwitchBusy?: boolean
+  /** Clear stored key and reopen the API Key gate (browser + Electron). */
+  onChangeApiKey?: () => void
 }
 
 export function InteractionBox({
@@ -31,6 +33,7 @@ export function InteractionBox({
   currentRealmId,
   onEnterRealm,
   realmSwitchBusy,
+  onChangeApiKey,
 }: Props) {
   const multiRealm = realms.length > 1
   return (
@@ -70,6 +73,11 @@ export function InteractionBox({
         </div>
       ) : null}
       <p className="text-[var(--dot-muted)] m-0">当前写入档位：{activeSlot + 1}</p>
+      {onChangeApiKey ? (
+        <button type="button" className="ui-btn px-4 py-2 w-full" onClick={onChangeApiKey}>
+          API 与模型…
+        </button>
+      ) : null}
       <button type="button" className="ui-btn px-4 py-2 w-full" onClick={onSaveCurrent}>
         手动存档（当前进度）
       </button>

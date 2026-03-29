@@ -9,6 +9,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("/fonts/NotoSansSC-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Undertale-style UI：白框线、黑底、黄强调；主字体 凤凰点阵体 16px */
 
 :root {

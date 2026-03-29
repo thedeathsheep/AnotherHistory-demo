@@ -23,8 +23,8 @@ ${sceneNarrative}
 ${concludeHint}
 
 输出严格 JSON 数组，每项 {"text":"选项文案","next":"…"${isLastBeat ? ',"conclusion_label":"…"' : ''}}。
-文案 5–18 字，中文；条数不少于 2。只输出 JSON。`
+文案 5–18 字，中文；须为第一人称的念头或行动；条数不少于 2。只输出 JSON。`
 }
 
 export const DYNAMIC_CHOICES_SYSTEM =
-  '你只输出 JSON 数组，每项含 text、next；next 必须来自用户给出的允许列表。用中文。'
+  '你只输出 JSON 数组，每项含 text、next；next 必须来自用户给出的允许列表。每条 text 须是**角色当下的念头或身体动作**，第一人称、口语化、5–18 字。用中文。'

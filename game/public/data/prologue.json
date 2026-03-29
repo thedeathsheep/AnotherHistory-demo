@@ -55,7 +55,7 @@
     {
       "node_id": "scene_5",
       "plot_guide": ["古道", "驿站", "残垣", "傍晚"],
-      "story_beat": "沿古道前行，发现一座废弃驿站",
+      "story_beat": "沿古道前行，发现一座废弃驿站；残墙上留有抓痕，似兽非兽，日色向晚，隐有不安",
       "taboo": [],
       "objective": "探索驿站",
       "description": "古道弯弯曲曲，走了大半天，日头偏西。路边出现一座*废弃驿站*，旗杆断了半截，门匾上「永宁驿」三字还勉强能认。",
@@ -72,7 +72,7 @@
       "objective": "决定是否进入树林",
       "description": "岔路通向一片树林。树影密集，光线暗下来。你感到一阵*不安*，像有人在背后盯着。",
       "choices": [
-        { "text": "硬着头皮走进去。", "next": "scene_8", "state": {}, "hai_delta": { "ling_sun": 20 } },
+        { "text": "硬着头皮走进去。", "next": "scene_8", "state": {}, "hai_delta": { "ling_sun": 10 } },
         { "text": "不对劲，回古道去。", "next": "scene_5", "state": {} }
       ]
     },
@@ -97,7 +97,7 @@
       "objective": "寻找出路",
       "description": "林子里越来越暗。你走着走着，发现自己在原地打转。前面有个*人影*，回头一看，却什么都没有。脑海中闪过一些不属于自己的记忆。",
       "choices": [
-        { "text": "跟着人影走。", "next": "scene_12", "state": {}, "hai_delta": { "ling_sun": 30, "jing_zhe": 42 } },
+        { "text": "跟着人影走。", "next": "scene_12", "state": {}, "hai_delta": { "ling_sun": 15, "jing_zhe": 21 } },
         { "text": "闭上眼，静下心来。", "next": "scene_13", "state": {} }
       ]
     },

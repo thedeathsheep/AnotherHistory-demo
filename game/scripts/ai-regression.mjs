@@ -2,12 +2,13 @@
 /**
  * AI-E25: static checks (no network) + optional --live / --live-planner against aihubmix.
  * Run: npm run test:ai
- * Live: npm run test:ai -- --live   (needs VITE_AIHUBMIX_API_KEY or AIHUBMIX_API_KEY)
+ * Live: npm run test:ai -- --live   (needs OPENAI_API_KEY / VITE_OPENAI_API_KEY or legacy AIHUBMIX_*)
  * Planner smoke: npm run test:ai -- --live-planner
  */
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { getOpenAiApiBaseFromEnv } from './utils.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -175,15 +176,19 @@ console.log(
   `\nStatic: ${staticCases.length + tabooCases.length + verifyCases.length + outlineCases.length + 1} checks passed.`
 )
 
-const apiKey = process.env.VITE_AIHUBMIX_API_KEY || process.env.AIHUBMIX_API_KEY
+const apiKey =
+  process.env.VITE_OPENAI_API_KEY?.trim() ||
+  process.env.OPENAI_API_KEY?.trim() ||
+  process.env.VITE_AIHUBMIX_API_KEY?.trim() ||
+  process.env.AIHUBMIX_API_KEY?.trim()
 const live = process.argv.includes('--live')
 const livePlanner = process.argv.includes('--live-planner')
 
-const API_BASE = 'https://aihubmix.com/v1'
+const API_BASE = getOpenAiApiBaseFromEnv()
 
 if (livePlanner) {
   if (!apiKey) {
-    console.error('Missing VITE_AIHUBMIX_API_KEY or AIHUBMIX_API_KEY for --live-planner')
+    console.error('Missing OPENAI_API_KEY / VITE_OPENAI_API_KEY (or legacy AIHUBMIX_*) for --live-planner')
     process.exit(1)
   }
   const seed = JSON.parse(readFileSync(designSeedPath, 'utf8'))
@@ -235,7 +240,7 @@ if (livePlanner) {
 
 if (live) {
   if (!apiKey) {
-    console.error('Missing VITE_AIHUBMIX_API_KEY or AIHUBMIX_API_KEY for --live')
+    console.error('Missing OPENAI_API_KEY / VITE_OPENAI_API_KEY (or legacy AIHUBMIX_*) for --live')
     process.exit(1)
   }
   const body = {

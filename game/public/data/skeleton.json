@@ -132,12 +132,50 @@
           "description": "三径在此收束。雾像被谁撕开一条帘，天光仍是灰的，但风里有了[焦炭与灰]的苦香。\n地平线上一缕烟柱细而直，影子在地上变得老实了。",
           "choices": [
             {
-              "text": "朝烟柱走，脚步放轻。",
-              "next": "ZheJiYuan_04",
+              "text": "踢开浮土，瞥见半片残甲半埋土里。",
+              "next": "ZheJiYuan_03a",
               "state": {}
             },
             {
-              "text": "先绕半圈，确认没有东西跟在身后。",
+              "text": "风过耳边像有句低语，驻足辨声。",
+              "next": "ZheJiYuan_03b",
+              "state": { "jian_zhao": 2 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_03a",
+          "truth_anchors": ["铁锈或兵戈意象", "原野或雾原"],
+          "taboo": ["不可回头"],
+          "objective": "从残甲辨明战场残响，再向烟柱去",
+          "description": "甲片薄脆，边缘卷刃，内面还沾着黑红色的垢。\n你把它按进土里又拔出——指缝里多了一股陈年的腥甜，像有人在此地反复倒下又站起。远处烟柱仍在。",
+          "choices": [
+            {
+              "text": "不再耽搁，朝烟柱方向去。",
+              "next": "ZheJiYuan_04",
+              "state": { "gen_jiao": 2 }
+            },
+            {
+              "text": "把残甲踢回土里，抹净手指再走。",
+              "next": "ZheJiYuan_04",
+              "state": { "jian_zhao": 3 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_03b",
+          "truth_anchors": ["雾", "铁腥味"],
+          "taboo": ["不可回头"],
+          "objective": "辨清低语来源，再向余热处去",
+          "description": "你屏息。那声音不像人声，更像铁片在风中互刮，却断断续续拼成字句的节拍。\n雾在那一侧略薄，烟柱的苦香忽然变浓——仿佛低语只是风向在变。",
+          "choices": [
+            {
+              "text": "顺着苦香最浓处走，不信耳边的节奏。",
+              "next": "ZheJiYuan_04",
+              "state": { "ming_zhu": 2 }
+            },
+            {
+              "text": "背对声源，只看脚下焦灰的纹路。",
               "next": "ZheJiYuan_04",
               "state": { "jian_zhao": 4 }
             }

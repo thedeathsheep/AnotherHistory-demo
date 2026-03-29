@@ -261,8 +261,6 @@ export function evaluateEnding(game: GameState): string {
   const { zhenshi, yiwei, hui, total } = parseYishiTagStats(yishiEntries)
   const haiTotal = totalHaiLevel(hais)
 
-  if (stepsTaken > 250) return 'U'
-
   const anyHaiMax = HAI_IDS.some((k) => (hais[k] ?? 0) >= 100)
   if (anyHaiMax) return 'T'
 
@@ -331,6 +329,9 @@ export function evaluateEnding(game: GameState): string {
   if (jianZhaoLabel === '障目') return 'obscured'
   if (jianZhaoLabel === '混浊') return 'turbid'
   if (jianZhaoLabel === '清彻') return 'clear'
+
+  // 亡史 U：步数过高且未落入上列收束（阈值自 250 降至 80，便于可触发）
+  if (stepsTaken > 80) return 'U'
 
   return 'default'
 }

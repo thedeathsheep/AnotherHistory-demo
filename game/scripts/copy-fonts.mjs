@@ -2,6 +2,7 @@
 /**
  * 1) Copy 目哉像素体 (MuzaiPixel) from node_modules to public/fonts.
  * 2) Download 凤凰点阵体 16px (Vonwaon Bitmap) to public/fonts if not present.
+ * 3) Download Noto Sans SC woff2 (简体中文子集) 为本地回退，避免运行时依赖 Google Fonts CDN。
  * Vite serves public/ at /, so /fonts/* are local.
  */
 
@@ -14,9 +15,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const destDir = path.join(root, 'public', 'fonts')
 const vonwaonDest = path.join(destDir, 'VonwaonBitmap-16px.ttf')
+const notoDest = path.join(destDir, 'NotoSansSC-400.woff2')
 
 // Optional: mirror URL for 凤凰点阵体 16px TTF (CC0). If fails, download manually from https://timothyqiu.itch.io/vonwaon-bitmap
 const VONWAON_16PX_URL = 'https://www.mianfeiziti.cn/static/upload/other/20210617/1623911667677963.ttf'
+
+/** Noto Sans SC 400 (Simplified Chinese subset) — local fallback, no Google Fonts CDN at runtime */
+const NOTO_SC_WOFF2_URL =
+  'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.2.6/files/noto-sans-sc-chinese-simplified-400-normal.woff2'
 
 function download(url) {
   return new Promise((resolve, reject) => {
@@ -66,4 +72,19 @@ async function ensureVonwaon() {
   }
 }
 
-ensureVonwaon()
+async function ensureNotoSansSc() {
+  if (fs.existsSync(notoDest)) {
+    console.log('copy-fonts: NotoSansSC-400.woff2 already in public/fonts')
+    return
+  }
+  try {
+    const buf = await download(NOTO_SC_WOFF2_URL)
+    fs.writeFileSync(notoDest, buf)
+    console.log('copy-fonts: downloaded NotoSansSC-400.woff2 to public/fonts')
+  } catch (err) {
+    console.warn('copy-fonts: could not download Noto Sans SC woff2:', err.message)
+    console.warn('  Install @fontsource/noto-sans-sc and copy chinese-simplified-400-normal.woff2 to public/fonts/NotoSansSC-400.woff2')
+  }
+}
+
+await Promise.all([ensureVonwaon(), ensureNotoSansSc()])

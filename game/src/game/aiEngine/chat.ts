@@ -3,12 +3,85 @@
  * Supports per-role model + streaming (Writer). Aligns with GDD 5.5 / AI Engine v2.
  */
 
+import { resolveOpenAiFetchTarget, type OpenAiFetchTarget } from '@/aiSettings'
 import { getModelForRole, type AIAgentRole } from './aiModels'
 import { emitAiDebug } from './aiDebugBus'
 
-const API_BASE = 'https://aihubmix.com/v1'
 const REQUEST_TIMEOUT = 90000
 const MAX_RETRIES = 2
+
+function defaultFetchTarget(): OpenAiFetchTarget {
+  return resolveOpenAiFetchTarget('')
+}
+
+/** Lightweight OpenAI-compatible check (GET …/v1/models). Some gateways return 404; then try a tiny chat request. */
+export async function validateOpenAiCompatibleKey(
+  apiKey: string,
+  baseUrlRaw: string,
+  timeoutMs = 15000,
+  modelForProbe?: string
+): Promise<{ ok: boolean; error?: string }> {
+  const t = apiKey.trim()
+  if (!t) return { ok: false, error: '请填写 API Key' }
+  const target = resolveOpenAiFetchTarget(baseUrlRaw.trim())
+  try {
+    const ctrl = new AbortController()
+    const id = setTimeout(() => ctrl.abort(), timeoutMs)
+    const modelsUrl = `${target.urlBase}/models`
+    const res = await fetch(modelsUrl, {
+      headers: { Authorization: `Bearer ${t}`, ...target.headers },
+      signal: ctrl.signal,
+    })
+    clearTimeout(id)
+    if (res.ok) return { ok: true }
+    if (res.status === 404) {
+      return validateWithMinimalChat(t, target, timeoutMs, modelForProbe)
+    }
+    const body = await res.text().catch(() => '')
+    const hint = body ? `: ${body.slice(0, 160)}` : ''
+    return { ok: false, error: `校验失败 HTTP ${res.status}${hint}` }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('abort')) return { ok: false, error: '校验超时，请检查网络' }
+    return { ok: false, error: msg }
+  }
+}
+
+async function validateWithMinimalChat(
+  apiKey: string,
+  target: OpenAiFetchTarget,
+  timeoutMs: number,
+  modelForProbe?: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const ctrl = new AbortController()
+    const id = setTimeout(() => ctrl.abort(), timeoutMs)
+    const model = modelForProbe?.trim() || getModelForRole('default')
+    const res = await fetch(`${target.urlBase}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...target.headers,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+      }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(id)
+    if (res.ok) return { ok: true }
+    const body = await res.text().catch(() => '')
+    const hint = body ? `: ${body.slice(0, 160)}` : ''
+    return { ok: false, error: `校验失败 HTTP ${res.status}${hint}` }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('abort')) return { ok: false, error: '校验超时，请检查网络' }
+    return { ok: false, error: msg }
+  }
+}
 
 export const AI_DEBUG = typeof import.meta !== 'undefined' && (import.meta.env?.VITE_AI_DEBUG === '1' || import.meta.env?.VITE_AI_DEBUG === 'true')
 
@@ -49,18 +122,20 @@ export async function chat(
   const model = resolveModel(opts)
 
   const start = Date.now()
-  log(label, `request start → ${API_BASE}/chat/completions model=${model}`)
+  const ft = defaultFetchTarget()
+  log(label, `request start → ${ft.urlBase}/chat/completions model=${model}`)
   let lastErr: Error | null = null
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const ctrl = new AbortController()
       const id = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT)
-      const res = await fetch(`${API_BASE}/chat/completions`, {
+      const res = await fetch(`${ft.urlBase}/chat/completions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          ...ft.headers,
         },
         body: JSON.stringify({
           model,
@@ -71,7 +146,11 @@ export async function chat(
         signal: ctrl.signal,
       })
       clearTimeout(id)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        const snippet = errBody.replace(/\s+/g, ' ').trim().slice(0, 280)
+        throw new Error(snippet ? `HTTP ${res.status}: ${snippet}` : `HTTP ${res.status}`)
+      }
       const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
       const content = data.choices?.[0]?.message?.content
       const ms = Date.now() - start
@@ -110,7 +189,8 @@ export async function chatStream(
   const { maxTokens = 1024, label = 'chatStream', onChunk, signal } = options
   const model = resolveModel(options)
   const start = Date.now()
-  log(label, `stream start → ${API_BASE}/chat/completions model=${model}`)
+  const ft = defaultFetchTarget()
+  log(label, `stream start → ${ft.urlBase}/chat/completions model=${model}`)
 
   const ctrl = new AbortController()
   const outerSignal = signal
@@ -125,11 +205,12 @@ export async function chatStream(
   const timeoutId = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT)
 
   try {
-    const res = await fetch(`${API_BASE}/chat/completions`, {
+    const res = await fetch(`${ft.urlBase}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...ft.headers,
       },
       body: JSON.stringify({
         model,

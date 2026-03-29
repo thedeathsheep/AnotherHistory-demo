@@ -26,17 +26,19 @@ npm run dev
 
 浏览器打开 [http://localhost:5173](http://localhost:5173)。
 
-**API Key（运行时 AI：境遇正文、感应、异史、Planner 等）** 按下面**顺序**读取（先命中先用）：
+**OpenAI 兼容 API**（任意支持 `/v1/chat/completions` 的供应商：OpenAI、AIHubMix、自建网关等）按下面**顺序**读取 Key（先命中先用）：
 
-1. **`game/.env`**：`VITE_AIHUBMIX_API_KEY=sk-…`（Vite 会打进前端，勿把含 Key 的 `.env` 提交仓库）
-2. **浏览器 `localStorage`**：键名 `anotherhistory_aihubmix_api_key`；首次无存档且未配置 Key 时，页面会提供输入框，保存后写入此处
-3. **`game/public/config.json`**（勿提交）：`{ "aihubmixApiKey": "sk-…" }`
+1. **`game/.env`**：`VITE_OPENAI_API_KEY`（可选 `VITE_OPENAI_BASE_URL`，默认 `https://api.openai.com/v1`）。仍兼容旧名 `VITE_AIHUBMIX_API_KEY`。
+2. **浏览器 `localStorage`**：键名 `anotherhistory_openai_api_key`，以及 `anotherhistory_openai_base_url`、`anotherhistory_openai_model`；首次门闸或「API 与模型…」里填写后写入。
+3. **`game/public/config.json`**（勿提交）：`{ "openaiApiKey", "openaiBaseUrl", "openaiModel" }`，仍兼容 `aihubmixApiKey`。
 
-**离线脚本**（`generate-chapter`、`test:ai -- --live` 等）另支持环境变量 **`AIHUBMIX_API_KEY`** 或 **`VITE_AIHUBMIX_API_KEY`**，与浏览器内 `import.meta.env` 不是同一套机制。
+**模型**：门闸里填写「模型 ID」则**所有角色**共用该模型；若留空则使用 `.env` 里 `VITE_AI_MODEL_PLANNER` / `VITE_AI_MODEL_WRITER` 等（见 `.env.example`）。
+
+**离线脚本**（`generate-chapter`、`test:ai -- --live` 等）支持 **`OPENAI_API_KEY` / `VITE_OPENAI_API_KEY`**（及旧名 `AIHUBMIX_*`），以及 **`OPENAI_API_BASE` / `VITE_OPENAI_BASE_URL`** 指定接口根路径（须含 `/v1`）。
 
 **Engine v2（Planner 动态大纲 + 动态节拍）**：代码**默认开启**。仅在 `.env` 中设置 **`VITE_AI_ENGINE_V2=0`** 或 **`false`** 时关闭，始终走纯骨架。模板见 `game/.env.example`。
 
-**首次启动**：若无存档且无 Key，会出现「保存并开始 / 跳过骨架游玩」；跳过仍可玩骨架，只是不调用 AI。
+**首次启动**：若无存档且无 Key，会出现门闸（Base URL、模型、Key、「校验并保存」/「跳过」）；跳过仍可玩骨架，只是不调用 AI。
 
 **桌面（Electron，不打包）：**
 
@@ -79,7 +81,7 @@ npm run build
 npm run electron:pack
 ```
 
-输出目录默认 `game/release/`（已在 `.gitignore`）。若在 Windows 上因「创建符号链接」权限导致工具链解压失败，当前配置已设置 **`signAndEditExecutable: false`** 以跳过自动签名相关步骤；正式签名需自行配置证书与权限。
+会先执行 `npm run build`、再 `npm run build:icons`（从 `build/icon.png` 生成 `build/icon.ico`）、最后打 `nsis` + `portable`。输出目录默认 `game/release/`（已在 `.gitignore`）。分发版为 **BYOK**：玩家在门闸填写自己的 OpenAI 兼容 Key、Base URL 与模型；Electron 下持久化到用户数据目录的 **`ai-settings.json`**（并镜像到 `localStorage`）。若在 Windows 上因「创建符号链接」权限导致工具链解压失败，当前配置已设置 **`signAndEditExecutable: false`** 以跳过自动签名相关步骤；正式签名需自行配置证书与权限。
 
 ## 浏览器里 “404 (Not Found)” 是什么？
 
@@ -91,7 +93,7 @@ npm run electron:pack
 |------|----------|
 | **`/config.json`** | **多为正常**。该文件为可选本地配置且默认不在仓库里；代码会 `fetch` 它，不存在则忽略，继续用 `.env` / `localStorage`。 |
 | **`/favicon.ico`** | 浏览器默认会找站点图标；若未提供该文件会 404。本项目在 `index.html` 里已用内联 SVG 作为 `rel="icon"`，一般不再额外请求 `favicon.ico`。 |
-| **`/fonts/result.css` 或字体文件** | **异常**：说明未执行或未成功执行 `npm run copy-fonts`（或 `npm install`），请补跑安装脚本。 |
+| **`/fonts/result.css` 或字体文件** | **异常**：说明未执行或未成功执行 `npm run copy-fonts`（或 `npm install`），请补跑安装脚本。其中 **`/fonts/NotoSansSC-400.woff2`** 由 `copy-fonts` 从 jsDelivr 拉取，用于无 Google Fonts 时的中文回退。 |
 | **`/data/manifest.json`、`/data/prologue.json`、`/data/skeleton.json` 等** | **异常**：游戏依赖这些数据；若 404 会导致无法加载界与节点，需确认 `public/data/` 下文件存在且 `manifest.json` 里 `chapters` 与文件名一致。 |
 | **`/data/design-seed.json`** | 仅 **Engine v2** 合并种子时用；若缺失，Planner 相关会降级/跳过（视逻辑而定），可检查是否应提交或生成该文件。 |
 
@@ -108,7 +110,7 @@ npm run generate:prologue
 - **输入**：`design/总设定.md`、`design/AI功能设定/`（ai1 / ai2 / ai3）、`design/序章大纲.md`
 - **输出**：写入 **`public/data/prologue.json`**
 - **去重**：`generated/chapters/prologue/input_hash.json`
-- **Key**：脚本侧 `AIHUBMIX_API_KEY` / `VITE_AIHUBMIX_API_KEY` 或 `public/config.json`
+- **Key / Base**：脚本侧 `OPENAI_API_KEY` / `VITE_OPENAI_API_KEY`（及旧名 `AIHUBMIX_*`）、`OPENAI_API_BASE` / `VITE_OPENAI_BASE_URL`，或 `public/config.json` 的 `openaiApiKey` 等
 
 **只改文案**：编辑 `generated/chapters/prologue/texts.json` 后 `node scripts/merge-only.mjs prologue`。
 

@@ -47,11 +47,32 @@ export function fileExists(path) {
   return existsSync(path)
 }
 
-const API_BASE = 'https://aihubmix.com/v1'
+function normalizeOpenAiBaseUrl(raw) {
+  let u = String(raw || '').trim().replace(/\/+$/, '')
+  if (!u) return 'https://api.openai.com/v1'
+  if (!/^https?:\/\//i.test(u)) u = `https://${u}`
+  if (!/\/v1$/i.test(u)) u = `${u}/v1`
+  return u
+}
+
+export function getOpenAiApiBaseFromEnv() {
+  loadEnv()
+  const b =
+    process.env.OPENAI_API_BASE?.trim() ||
+    process.env.VITE_OPENAI_BASE_URL?.trim() ||
+    'https://api.openai.com/v1'
+  return normalizeOpenAiBaseUrl(b)
+}
+
+function apiBaseFromEnv() {
+  return getOpenAiApiBaseFromEnv()
+}
+
 const DEFAULT_MODEL = 'gpt-4o-mini'
 const TIMEOUT_MS = 90000
 
 export async function chat(apiKey, messages, maxTokens = 2048) {
+  const API_BASE = apiBaseFromEnv()
   const ctrl = new AbortController()
   const id = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   const res = await fetch(`${API_BASE}/chat/completions`, {
@@ -88,19 +109,24 @@ function loadEnv() {
 
 export function getApiKey() {
   loadEnv()
-  const key = process.env.AIHUBMIX_API_KEY || process.env.VITE_AIHUBMIX_API_KEY
-  if (key?.startsWith('sk-')) return key
+  const key =
+    process.env.OPENAI_API_KEY?.trim() ||
+    process.env.VITE_OPENAI_API_KEY?.trim() ||
+    process.env.AIHUBMIX_API_KEY?.trim() ||
+    process.env.VITE_AIHUBMIX_API_KEY?.trim()
+  if (key) return key
   try {
     const cfgPath = resolvePath('public', 'config.json')
     if (fileExists(cfgPath)) {
       const cfg = readJson(cfgPath)
-      if (cfg.aihubmixApiKey?.startsWith('sk-')) return cfg.aihubmixApiKey
+      const k = cfg.openaiApiKey?.trim() || cfg.aihubmixApiKey?.trim()
+      if (k) return k
     }
   } catch (_) {}
   const apiKeyPath = resolvePath('..', 'api_key.txt')
   if (fileExists(apiKeyPath)) {
-    const key = readText(apiKeyPath).trim().split('\n')[0]?.trim()
-    if (key?.startsWith('sk-')) return key
+    const k = readText(apiKeyPath).trim().split('\n')[0]?.trim()
+    if (k) return k
   }
   return null
 }

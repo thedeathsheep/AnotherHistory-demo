@@ -1,7 +1,10 @@
 /**
  * Per-agent model selection (AI Engine v2). Env: VITE_AI_MODEL_<ROLE>.
+ * If the user set a default model in the API gate (localStorage), it overrides all roles.
  * Fallback: gpt-4o-mini for all.
  */
+
+import { getUserModelOverrideSync } from '@/aiSettings'
 
 export type AIAgentRole = 'planner' | 'director' | 'writer' | 'choice' | 'verifier' | 'yishi' | 'default'
 
@@ -15,6 +18,8 @@ function envModel(key: string): string | undefined {
 
 /** Resolved model name for chat/completions. */
 export function getModelForRole(role: AIAgentRole): string {
+  const user = getUserModelOverrideSync()
+  if (user) return user
   const map: Record<AIAgentRole, string | undefined> = {
     planner: envModel('VITE_AI_MODEL_PLANNER'),
     director: envModel('VITE_AI_MODEL_DIRECTOR'),

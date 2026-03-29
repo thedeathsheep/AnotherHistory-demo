@@ -392,6 +392,12 @@ function buildHaiEffects(hais: Record<HaiId, number>): string[] {
       covered.add(HAI_LABELS[id])
     }
   }
+  // R4: make 灵损 readable in play — force one omission when high
+  if ((hais.ling_sun ?? 0) > 40) {
+    hints.push(
+      '【灵损·可读】正文须故意省略一处本该交代的关键细节，或用「……」替代一处要害信息，让读者感到记忆有缺；其余句子仍须具体。'
+    )
+  }
   return hints
 }
 
@@ -415,20 +421,24 @@ function buildStateEffects(statLabels: AIContext['statLabels']): string[] {
   return hints
 }
 
-const NARRATIVE_TAIL_RULES = `核心：叙事为游戏服务，极简点明处境。**所有描述必须具体**：只写具体动作、物象、身体反应；每个节点要有具体情节点或与前后衔接，有叙事趣味与逻辑。
+const NARRATIVE_TAIL_RULES = `核心：叙事为游戏服务，**极简但要有画面**：**写满 3–5 句**（可短句），点明处境与氛围；**所有描述必须具体**——只写具体动作、物象、身体反应；每段须有可感知的情节点或与前后衔接。
 
-禁止抽象（一律不用）：
-- 「思绪在……中游走」「思绪游走」「心在……中」——禁止抽象主语（思绪、心、意识）与抽象环境（清晰的蓝天、宁静的环境）；必须具体到谁在做什么、什么物。例：❌「思绪在清晰的蓝天与宁静的环境中游走。」→ ✅「你抬头。天蓝，没云。」
-禁止浅白：渐渐/逐渐、感受到、内心觉察、熟悉又陌生、心跳回荡等；例 ❌「渐渐清醒的你，感受到……内心觉察这片熟悉又陌生的土地。」→ ✅「你醒了。风擦过。野地在脚边。」
+**禁止清单（只守三条原则）**：
+1. 不用抽象主语：禁止以思绪、心、意识、灵魂等作主语空转；须落到人或身体在做什么、眼前何物。
+2. 不用浅白副词与空泛感受词堆砌（如渐渐、仿佛、某种、一股说不清）；用可观察的细节代替。
+3. 不用比喻排比堆砌与场景清单式罗列；不列举选项、不解释玩法。
 
-禁止：罗列场景元素、比喻句、固定套词（古道/书箱）；不列举选项、不解释玩法。只输出这段描述，不要选项或标题。
+另禁：固定套词硬凑（如无故重复「古道/书箱」）。只输出这段叙事正文，不要标题或选项。
 
-【鉴照高亮】在 1–2 个关键信息（物象、动作、线索）处用 \`*关键词*\` 包裹，供鉴照高亮。鉴照清彻/混浊时显示，障目时不显示。例：\`草还挂着*露*。脚边是一条*土路*。\``
+【鉴照高亮】**每一段正文必须恰好包含 1–2 处** \`*关键词*\`（多不得、少不得），裹在**最关键**的物象、动作或线索上，供鉴照高亮；鉴照清彻/混浊时 UI 会显示，障目时不显示。
+**格式示例（须仿此结构，可换词）**：\`你停步。墙皮翘起，露出*灰坯*。风里有一股*铁锈味*，不像驿站该有的。\``
 
 export function buildNarrativeUserPrompt(ctx: AIContext): string {
   const sections: string[] = [
     `【境遇】${ctx.realmName}`,
-    ctx.storyBeat ? `【情节点】将以下情节点改写为 1–2 句具体叙事（只写动作/物象/身体反应）：${ctx.storyBeat}` : '',
+    ctx.storyBeat
+      ? `【情节点】将以下情节点展开为 3–5 句具体叙事（只写动作/物象/身体反应）：${ctx.storyBeat}`
+      : '',
     ctx.plotGuide.length
       ? `【核心剧情导向】策划给定的关键词/剧情要求，若有则自然融入描述：${JSON.stringify(ctx.plotGuide)}`
       : '',
@@ -442,7 +452,7 @@ export function buildNarrativeUserPrompt(ctx: AIContext): string {
     ...buildHaiEffects(ctx.hais),
   ].filter(Boolean)
 
-  return `你扮演《行旅》的叙事引擎。根据以下骨架写 1–2 句叙事，点明当前处境即可，然后交给选项。
+  return `你扮演《行旅》的叙事引擎。根据以下语境写 **3–5 句**叙事（可短句），点明当前处境与氛围，然后交给选项。
 
 ${sections.join('\n')}
 
@@ -468,7 +478,7 @@ export function buildDynamicNarrativeUserPrompt(
     ...buildHaiEffects(hais),
   ].filter(Boolean)
 
-  return `你扮演《行旅》的叙事引擎。根据以下分层语境写 1–2 句叙事，点明当前处境即可，然后交给选项。
+  return `你扮演《行旅》的叙事引擎。根据以下分层语境写 **3–5 句**叙事（可短句），点明当前处境与氛围，然后交给选项。
 
 ${sections.join('\n')}
 
@@ -476,7 +486,7 @@ ${NARRATIVE_TAIL_RULES}`
 }
 
 export const NARRATIVE_SYSTEM =
-  '你只输出游戏内的叙事文本。叙事为游戏服务：1–2 句点明处境，只写具体动作与物象；有具体情节点或与前后衔接。可用 *关键词* 标记关键信息供鉴照高亮。禁止抽象句：思绪/心/意识作主语、在……中游走、清晰的蓝天、宁静的环境等；禁止浅白句（渐渐、感受到、内心觉察、熟悉又陌生）。例：不写「思绪在清晰的蓝天与宁静的环境中游走」，写「你抬头。天蓝，没云。」用中文，不要解释或加标题。'
+  '你只输出游戏内的叙事文本。叙事为游戏服务：用 **3–5 句**（可短句）点明处境与画面，只写具体动作、物象与身体反应；须有可感知的情节点或与前后衔接。**每一段必须恰好含 1–2 处 *关键词*（半角星号包裹）** 供鉴照高亮。遵守三条禁令：不用抽象主语（思绪、心、意识作主语空转）；不用浅白副词与空泛感受词堆砌；不用比喻排比与场景清单式罗列。用中文，不要解释或加标题。'
 
 /** AI-E18: rough check that output mentions at least one plot keyword (2+ chars). */
 export function narrativeMatchesPlotGuide(text: string, plotGuide: string[]): boolean {

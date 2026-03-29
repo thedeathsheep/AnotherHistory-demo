@@ -23,7 +23,7 @@ import { buildLayeredContext, layeredContextBlock, type LayeredContextInput } fr
 import { beatNextToken } from '@/game/storyRuntime'
 
 // Re-export for external use
-export { chat, chatStream, AI_DEBUG } from './chat'
+export { chat, chatStream, AI_DEBUG, validateOpenAiCompatibleKey } from './chat'
 export { getModelForRole, type AIAgentRole } from './aiModels'
 export {
   buildContext,

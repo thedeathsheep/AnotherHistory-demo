@@ -16,6 +16,7 @@ export {
   chat,
   chatStream,
   AI_DEBUG,
+  validateOpenAiCompatibleKey,
   narrativeMatchesPlotGuide,
   getModelForRole,
   type NodeContext,

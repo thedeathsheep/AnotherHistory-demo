@@ -33,11 +33,19 @@ import {
   generateDynamicBeatChoices,
   runDirector,
   AI_DEBUG,
+  validateOpenAiCompatibleKey,
   type LayeredContextInput,
 } from '@/game/aiBridge'
 import { loadDesignSeed } from '@/game/designSeed'
 import { beatNextToken, directorGateHintToNodeGatePatch, type NodeDirective } from '@/game/storyRuntime'
-import { getApiKey, rememberUserApiKey } from '@/config'
+import {
+  getApiKey,
+  rememberAiSettings,
+  clearStoredApiKeyOnly,
+  hydrateAiSettingsFromElectron,
+  normalizeOpenAiBaseUrl,
+  getGateFormDefaults,
+} from '@/config'
 import { PLANNER_LOADING_HINT } from '@/plannerUi'
 import { NarrativeBox } from '@/components/NarrativeBox'
 import { StatusBox } from '@/components/StatusBox'
@@ -64,6 +72,19 @@ type Panel = null | 'items' | 'clues' | 'menu' | 'yishi'
 const AI_BODY_LOADING_HINT = '境遇正文凝练中…'
 /** 正文未出时不占位展示选项，仅作说明 */
 const SENSE_AFTER_BODY_HINT = '待正文落定，感应方显。'
+
+const UI_HINT_DIANPO_KEY = 'anothistory.uiHint.dianPoSeen'
+const UI_HINT_MID_CONCLUDE_KEY = 'anothistory.uiHint.midConcludeSeen'
+
+function readUiHintSeen(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1'
+  } catch {
+    return true
+  }
+}
+
+const OPENAI_DOCS = 'https://platform.openai.com/docs'
 
 function getNextRealmAfter(
   skeleton: Skeleton,
@@ -93,6 +114,10 @@ export default function App() {
   const [pendingYishi, setPendingYishi] = useState<string | null>(null)
   const [flyState, setFlyState] = useState<FlyState | null>(null)
   const [dianPoRemovedIndex, setDianPoRemovedIndex] = useState<number | null>(null)
+  const [dianPoGuideDismissed, setDianPoGuideDismissed] = useState(() => readUiHintSeen(UI_HINT_DIANPO_KEY))
+  const [midConcludeGuideDismissed, setMidConcludeGuideDismissed] = useState(() =>
+    readUiHintSeen(UI_HINT_MID_CONCLUDE_KEY)
+  )
   const [yishiHint, setYishiHint] = useState<string | null>(null)
   const pendingYishiRef = useRef<HTMLButtonElement>(null)
   const lastEntryRef = useRef<HTMLLIElement>(null)
@@ -111,6 +136,11 @@ export default function App() {
   const [v2FallbackToast, setV2FallbackToast] = useState<string | null>(null)
   const [awaitingApiKeyGate, setAwaitingApiKeyGate] = useState(false)
   const [apiKeyInput, setApiKeyInput] = useState('')
+  const [baseUrlInput, setBaseUrlInput] = useState('')
+  const [modelInput, setModelInput] = useState('')
+  const [keyGateError, setKeyGateError] = useState<string | null>(null)
+  const [keyGateValidating, setKeyGateValidating] = useState(false)
+  const keyGateReasonRef = useRef<'bootstrap' | 'change'>('bootstrap')
 
   const refreshSaveSummaries = () => setSaveSummaries(listSaveSummaries())
 
@@ -136,7 +166,7 @@ export default function App() {
       const g = new GameState(skeleton)
       g.startRealm()
       narrativeCtxRef.current.clear()
-      const k = resolvedKey?.trim()?.startsWith('sk-') ? resolvedKey.trim() : null
+      const k = resolvedKey?.trim() ? resolvedKey.trim() : null
       setApiKey(k)
       await runTryBeginDynamicStory(g, k)
       setGame(g)
@@ -148,6 +178,7 @@ export default function App() {
     let cancelled = false
     ;(async () => {
       try {
+        await hydrateAiSettingsFromElectron()
         await hydrateSlotsFromElectron()
         const sk = await loadSkeleton()
         const key = await getApiKey()
@@ -533,39 +564,156 @@ export default function App() {
     void runTryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
   }
 
+  const handleOpenChangeApiKey = async () => {
+    await clearStoredApiKeyOnly()
+    keyGateReasonRef.current = 'change'
+    setApiKey(null)
+    const d = getGateFormDefaults()
+    setBaseUrlInput(d.baseUrl)
+    setModelInput(d.model)
+    setApiKeyInput('')
+    setKeyGateError(null)
+    setAwaitingApiKeyGate(true)
+    setPanel(null)
+  }
+
+  useEffect(() => {
+    if (awaitingApiKeyGate && skeleton) {
+      const d = getGateFormDefaults()
+      setBaseUrlInput(d.baseUrl)
+      setModelInput(d.model)
+      setKeyGateError(null)
+    }
+  }, [awaitingApiKeyGate, skeleton])
+
   if (awaitingApiKeyGate && skeleton) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-5 max-w-lg mx-auto w-full">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4 max-w-lg mx-auto w-full">
         <p className="text-stone-300 text-center" style={{ fontSize: 'var(--dot-size)' }}>
-          配置 Aihubmix API Key（sk- 开头）可启用动态大纲与 AI 叙事。也可跳过，仅体验骨架流程。
+          使用 OpenAI 兼容接口（/v1/chat/completions）连接任意供应商：官方 OpenAI、AIHubMix、自建网关等。填写 Base URL、模型名与 API Key；也可跳过，仅玩骨架。
         </p>
-        <input
-          type="password"
-          autoComplete="off"
-          placeholder="sk-..."
-          value={apiKeyInput}
-          onChange={(e) => setApiKeyInput(e.target.value)}
-          className="w-full px-3 py-2 rounded border border-stone-600 bg-stone-900 text-stone-200"
-          style={{ fontSize: 'var(--dot-size)' }}
-        />
+        <p className="text-stone-500 text-center text-sm m-0">
+          在浏览器里使用任意 OpenAI 兼容 Base（官方、中转、自建网关等）时，请求会经本机 Vite 开发/预览代理转发（避免 CORS）；直接打开静态 dist 或未走 Vite 时，请用 Electron 或使用方已开启 CORS 的网关。
+        </p>
+        <p className="text-stone-500 text-center text-sm m-0">
+          Base URL 须指向带 <code className="text-stone-400">/v1</code> 的根，例如{' '}
+          <code className="text-stone-400">https://api.openai.com/v1</code>。说明见{' '}
+          <a
+            href={OPENAI_DOCS}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--dot-accent-dim)] underline hover:text-[var(--dot-accent)]"
+          >
+            OpenAI 文档
+          </a>
+          。
+        </p>
+        <label className="w-full flex flex-col gap-1 text-stone-400 text-sm">
+          <span>API Base URL</span>
+          <input
+            type="url"
+            autoComplete="off"
+            placeholder="https://api.openai.com/v1"
+            value={baseUrlInput}
+            onChange={(e) => {
+              setBaseUrlInput(e.target.value)
+              setKeyGateError(null)
+            }}
+            className="w-full px-3 py-2 rounded border border-stone-600 bg-stone-900 text-stone-200"
+            style={{ fontSize: 'var(--dot-size)' }}
+          />
+        </label>
+        <label className="w-full flex flex-col gap-1 text-stone-400 text-sm">
+          <span>模型 ID（各角色共用；留空则用 .env 里分角色模型）</span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="gpt-4o-mini"
+            value={modelInput}
+            onChange={(e) => {
+              setModelInput(e.target.value)
+              setKeyGateError(null)
+            }}
+            className="w-full px-3 py-2 rounded border border-stone-600 bg-stone-900 text-stone-200"
+            style={{ fontSize: 'var(--dot-size)' }}
+          />
+        </label>
+        <label className="w-full flex flex-col gap-1 text-stone-400 text-sm">
+          <span>API Key</span>
+          <input
+            type="password"
+            autoComplete="off"
+            placeholder="your-api-key"
+            value={apiKeyInput}
+            onChange={(e) => {
+              setApiKeyInput(e.target.value)
+              setKeyGateError(null)
+            }}
+            className="w-full px-3 py-2 rounded border border-stone-600 bg-stone-900 text-stone-200"
+            style={{ fontSize: 'var(--dot-size)' }}
+          />
+        </label>
+        {keyGateError ? (
+          <p className="text-red-400 text-sm text-center m-0" role="alert">
+            {keyGateError}
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-3 justify-center">
           <button
             type="button"
             className="ui-btn px-5 py-2"
             style={{ fontSize: 'var(--dot-size)' }}
+            disabled={keyGateValidating}
             onClick={() => {
-              const t = apiKeyInput.trim()
-              if (t.startsWith('sk-')) rememberUserApiKey(t)
-              void completeBootstrapAfterKeyGate(t.startsWith('sk-') ? t : null)
+              void (async () => {
+                const t = apiKeyInput.trim()
+                if (!t) {
+                  setKeyGateError('请填写 API Key')
+                  return
+                }
+                const baseNorm = normalizeOpenAiBaseUrl(baseUrlInput)
+                setKeyGateError(null)
+                setKeyGateValidating(true)
+                const v = await validateOpenAiCompatibleKey(t, baseNorm, 15000, modelInput.trim())
+                setKeyGateValidating(false)
+                if (!v.ok) {
+                  setKeyGateError(v.error ?? '校验失败')
+                  return
+                }
+                rememberAiSettings({
+                  apiKey: t,
+                  baseUrl: baseNorm,
+                  model: modelInput.trim(),
+                })
+                if (keyGateReasonRef.current === 'change') {
+                  keyGateReasonRef.current = 'bootstrap'
+                  setApiKey(t)
+                  setAwaitingApiKeyGate(false)
+                  setApiKeyInput('')
+                  return
+                }
+                setApiKeyInput('')
+                void completeBootstrapAfterKeyGate(t)
+              })()
             }}
           >
-            保存并开始
+            {keyGateValidating ? '校验中…' : '校验并保存'}
           </button>
           <button
             type="button"
             className="ui-btn px-5 py-2"
             style={{ fontSize: 'var(--dot-size)' }}
-            onClick={() => void completeBootstrapAfterKeyGate(null)}
+            disabled={keyGateValidating}
+            onClick={() => {
+              setKeyGateError(null)
+              if (keyGateReasonRef.current === 'change') {
+                keyGateReasonRef.current = 'bootstrap'
+                setAwaitingApiKeyGate(false)
+                setApiKey(null)
+                return
+              }
+              void completeBootstrapAfterKeyGate(null)
+            }}
           >
             跳过，骨架游玩
           </button>
@@ -607,7 +755,7 @@ export default function App() {
         ) : (
           <p className="text-stone-400">{plannerLoading ? PLANNER_LOADING_HINT : '加载中…'}</p>
         )}
-        {window.electronAPI?.isElectron && (
+        {import.meta.env.DEV && window.electronAPI?.isElectron && (
           <button
             type="button"
             onClick={handleRegenerateGenerated}
@@ -720,6 +868,15 @@ export default function App() {
     }
   }
 
+  const dismissMidConcludeGuide = () => {
+    try {
+      localStorage.setItem(UI_HINT_MID_CONCLUDE_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setMidConcludeGuideDismissed(true)
+  }
+
   const handleMidConclude = async () => {
     if (!game || !node) return
     if (!beatNarrativeReady || choicesInteractLocked) return
@@ -729,6 +886,7 @@ export default function App() {
       )
     )
       return
+    dismissMidConcludeGuide()
     const coreFacts = [
       `定稿于节点 ${node.node_id}`,
       ...(node.plot_guide ?? node.truth_anchors ?? []).slice(0, 2),
@@ -812,6 +970,12 @@ export default function App() {
   const handleDianPo = () => {
     if (!game || !node || !canDianPo) return
     if (!game.consumeJianZhao(dianPoPct)) return
+    try {
+      localStorage.setItem(UI_HINT_DIANPO_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setDianPoGuideDismissed(true)
     const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
     const indexed = baseChoices
       .map((choice, origIndex) => ({ choice, origIndex }))
@@ -862,7 +1026,7 @@ export default function App() {
           >
             交互
           </button>
-          {window.electronAPI?.isElectron && (
+          {import.meta.env.DEV && window.electronAPI?.isElectron && (
             <button
               type="button"
               onClick={handleRegenerateGenerated}
@@ -966,6 +1130,39 @@ export default function App() {
                       </button>
                     )}
                   </div>
+                  {node && beatNarrativeReady && !dianPoGuideDismissed && canDianPo ? (
+                    <p className="text-[var(--dot-muted)] mt-1 max-w-md" style={{ fontSize: '0.85em' }}>
+                      消耗鉴照，可剔除一个感应。
+                      <button
+                        type="button"
+                        className="ml-2 underline decoration-[var(--dot-muted)]/60 hover:text-[var(--dot-text)]"
+                        style={{ fontSize: 'inherit' }}
+                        onClick={() => {
+                          try {
+                            localStorage.setItem(UI_HINT_DIANPO_KEY, '1')
+                          } catch {
+                            /* ignore */
+                          }
+                          setDianPoGuideDismissed(true)
+                        }}
+                      >
+                        知道了
+                      </button>
+                    </p>
+                  ) : null}
+                  {node && beatNarrativeReady && !midConcludeGuideDismissed ? (
+                    <p className="text-[var(--dot-muted)] mt-1 max-w-md" style={{ fontSize: '0.85em' }}>
+                      不选感应，直接封笔归档。
+                      <button
+                        type="button"
+                        className="ml-2 underline decoration-[var(--dot-muted)]/60 hover:text-[var(--dot-text)]"
+                        style={{ fontSize: 'inherit' }}
+                        onClick={dismissMidConcludeGuide}
+                      >
+                        知道了
+                      </button>
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -1117,6 +1314,7 @@ export default function App() {
           currentRealmId={game.realmId}
           onEnterRealm={handleEnterRealm}
           realmSwitchBusy={narrativeLoading || yishiLoading || choicesLoading || plannerLoading}
+          onChangeApiKey={handleOpenChangeApiKey}
         />
       </Overlay>
 

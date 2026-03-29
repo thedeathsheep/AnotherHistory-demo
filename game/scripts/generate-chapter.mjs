@@ -54,7 +54,7 @@ async function runChapter(chapterId) {
 
   const apiKey = getApiKey()
   if (!apiKey) {
-    console.error('Error: No API key. Set AIHUBMIX_API_KEY or VITE_AIHUBMIX_API_KEY, or add public/config.json with aihubmixApiKey.')
+    console.error('Error: No API key. Set OPENAI_API_KEY / VITE_OPENAI_API_KEY (or legacy AIHUBMIX_*), or public/config.json openaiApiKey.')
     process.exit(1)
   }
 

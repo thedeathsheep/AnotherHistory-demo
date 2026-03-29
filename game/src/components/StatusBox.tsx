@@ -1,5 +1,6 @@
 import type { StatKey, HaiId } from '@/game/types'
 import { HAI_LABELS } from '@/game/types'
+import { HAI_PLAYER_HINTS } from '@/game/haiCatalog'
 import { statLabel } from '@/game/state'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 
 export function StatusBox({ stats, hais = {}, className = '', inline }: Props) {
   const activeHais = (Object.entries(hais) as [HaiId, number][]).filter(([, v]) => (v ?? 0) > 0)
+  const severeHais = (Object.entries(hais) as [HaiId, number][]).filter(([, v]) => (v ?? 0) > 50)
   const content = (
     <>
       <span className="text-[var(--dot-text)]">命烛 [{statLabel('ming_zhu', stats.ming_zhu)}]</span>
@@ -21,6 +23,19 @@ export function StatusBox({ stats, hais = {}, className = '', inline }: Props) {
           【{HAI_LABELS[id]}】
         </span>
       ))}
+      {severeHais.length > 0 ? (
+        <span
+          className="text-[var(--dot-muted)] shrink-0 w-full basis-full"
+          style={{ fontSize: '0.92em' }}
+          title="害势偏高时的体感提示"
+        >
+          {severeHais.map(([id]) => (
+            <span key={id} className="mr-2">
+              {HAI_LABELS[id]}：{HAI_PLAYER_HINTS[id]}
+            </span>
+          ))}
+        </span>
+      ) : null}
     </>
   )
   if (inline) {

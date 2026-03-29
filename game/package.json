@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "electron:dev": "npx --yes kill-port 5173 5174 5175 && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build",
-    "electron:pack": "npm run build && electron-builder --win",
+    "build:icons": "node scripts/build-icons.mjs",
+    "electron:pack": "npm run build && npm run build:icons && electron-builder --win",
     "test:ai": "node scripts/ai-regression.mjs",
     "test:unit": "vitest run",
     "test": "npm run test:unit && npm run test:ai",
@@ -30,6 +31,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/http-proxy": "^1.17.17",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
@@ -37,7 +39,10 @@
     "concurrently": "^9.1.0",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
+    "http-proxy": "^1.18.1",
+    "png-to-ico": "^3.0.1",
     "postcss": "^8.4.49",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.15",
     "typescript": "~5.6.2",
     "vite": "^6.0.1",
@@ -47,7 +52,9 @@
   "build": {
     "appId": "com.anotherhistory.game",
     "productName": "Another History",
+    "asar": true,
     "directories": {
+      "buildResources": "build",
       "output": "release"
     },
     "files": [
@@ -55,12 +62,37 @@
       "electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "build",
+        "filter": [
+          "icon.ico",
+          "icon.png"
+        ]
+      }
+    ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
       ],
       "signAndEditExecutable": false
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
     },
     "nsis": {
       "oneClick": false,

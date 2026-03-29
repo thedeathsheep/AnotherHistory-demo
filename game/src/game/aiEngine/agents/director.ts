@@ -8,7 +8,7 @@ import { chat } from '../chat'
 const DIRECTOR_SYSTEM = `你是《行旅》的导演 AI。只输出一个 JSON 对象，不要 markdown，不要解释。
 Schema:
 {"scene_setting":"string","mood":"string","plot_advancement":"string","choices_hint":{"count":3,"directions":["string"]},"foreshadowing":"string可选","callback":"string可选","hai_effects_note":"string可选","gate_hint":{"item":"string可选","clue":"string可选","ming_zhu_min":0可选,"gen_jiao_min":0可选,"jian_zhao_min":0可选}}
-choices_hint.count 在 2–4；directions 与 count 一致；中文短词组。
+choices_hint.count 在 2–4；directions 与 count 一致；每条须是**本拍场景里具体的动作或物象**（如「踩住车辙里的黑渣」「贴门听里间动静」），禁止泛化词：前行、探索、观察、继续、查看四周、调查 等。
 gate_hint：仅当本拍需要门禁时填写；item/clue 须为游戏目录中已有物证/线索 ID（字符串），否则留空；stat 阈值为 0–100 整数。`
 
 function buildDirectorUser(

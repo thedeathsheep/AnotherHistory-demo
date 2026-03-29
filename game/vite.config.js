@@ -2,11 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { readFileSync } from 'fs';
+import { openAiCompatProxyPlugin } from './vite-plugins/openaiCompatProxy';
 var pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
 export default defineConfig(function (_a) {
     var mode = _a.mode;
     return ({
-        plugins: [react()],
+        plugins: [react(), openAiCompatProxyPlugin()],
         server: { port: 5173, strictPort: true },
         resolve: {
             alias: { '@': path.resolve(__dirname, './src') },
