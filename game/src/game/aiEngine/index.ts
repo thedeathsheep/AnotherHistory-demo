@@ -3,7 +3,7 @@
  * Refactored from aiBridge; aligns with GDD 5.5, AI流水线与存储规范, TODO AI-E*.
  */
 
-import type { Node, Choice, HaiId, Item, Clue } from '@/game/types'
+import type { Node, Choice, HaiId, Item, Clue, RealmNpc } from '@/game/types'
 import { normalizeHais } from '@/game/types'
 import { violatesTaboo, statLabel } from '@/game/state'
 import { chat, chatStream } from './chat'
@@ -17,6 +17,8 @@ import {
 import { buildYishiUserPrompt, YISHI_SYSTEM } from './prompts/yishi'
 import { buildChoicesUserPrompt, CHOICES_SYSTEM } from './prompts/choices'
 import { buildDynamicChoicesUserPrompt, DYNAMIC_CHOICES_SYSTEM } from './prompts/dynamicChoices'
+import { ITEM_NARRATIVE_SYSTEM, buildItemNarrativeUserPrompt } from './prompts/item'
+import { NPC_DIALOGUE_SYSTEM, buildNpcDialogueUserPrompt } from './prompts/npc'
 import { buildLayeredContext, layeredContextBlock, type LayeredContextInput } from './contextAssembly'
 import { beatNextToken } from '@/game/storyRuntime'
 
@@ -149,6 +151,39 @@ export async function generateYishi(
     label: 'generateYishi',
     agentRole: 'yishi',
   })
+}
+
+/** AI-E16: sensory / inspection narrative for a single item. */
+export async function generateItemNarrative(
+  apiKey: string,
+  item: Item,
+  clues: Clue[],
+  hais?: Partial<Record<HaiId, number>>
+): Promise<string | null> {
+  const user = buildItemNarrativeUserPrompt(item, hais, clues)
+  const raw = await chat(
+    apiKey,
+    [{ role: 'system', content: ITEM_NARRATIVE_SYSTEM }, { role: 'user', content: user }],
+    { maxTokens: 320, label: 'generateItemNarrative', agentRole: 'writer' }
+  )
+  return raw?.trim() || null
+}
+
+/** AI-E16: NPC line or attitude block for current scene. */
+export async function generateNpcDialogue(
+  apiKey: string,
+  npc: RealmNpc,
+  sceneHint: string,
+  clues: Clue[],
+  hais?: Partial<Record<HaiId, number>>
+): Promise<string | null> {
+  const user = buildNpcDialogueUserPrompt(npc, sceneHint, hais, clues)
+  const raw = await chat(
+    apiKey,
+    [{ role: 'system', content: NPC_DIALOGUE_SYSTEM }, { role: 'user', content: user }],
+    { maxTokens: 320, label: 'generateNpcDialogue', agentRole: 'writer' }
+  )
+  return raw?.trim() || null
 }
 
 /** Parsed AI choice: text + next only; state/hai_delta inherited from skeleton. */

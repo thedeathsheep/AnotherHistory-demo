@@ -6,6 +6,8 @@
  *
  * 章节 ID 为 prologue 时，读取 design/序章大纲.md
  * 其他章节需存在 design/{id}大纲.md
+ * 合并结果写入 public/data/{chapterId}.json（prologue 仍为 prologue.json）
+ * --all：对存在的 outline 依次跑（默认 prologue、折戟原）
  */
 
 import { readText, readJson, writeJson, writeText, hash, stableJsonStringify, fileExists, getApiKey } from './utils.mjs'
@@ -16,13 +18,16 @@ import { runAi3 } from './ai3-texts.mjs'
 import { merge } from './merge.mjs'
 
 const args = process.argv.slice(2)
-const chapterId = args.find((a) => !a.startsWith('--')) || 'prologue'
 const forceRegenerate = args.includes('--force')
+const runAll = args.includes('--all')
+const chapterIdArg = args.find((a) => !a.startsWith('--'))
 
-// 序章大纲文件名
-const outlineFileName = chapterId === 'prologue' ? '序章大纲.md' : `${chapterId}大纲.md`
+function chapterOutlineMdName(chapterId) {
+  return chapterId === 'prologue' ? '序章大纲.md' : `${chapterId}大纲.md`
+}
 
-function getPaths() {
+function getPaths(chapterId) {
+  const outlineFileName = chapterOutlineMdName(chapterId)
   const genDir = resolvePath('generated', 'chapters', chapterId)
   return {
     genDir,
@@ -39,12 +44,12 @@ function getPaths() {
   }
 }
 
-async function main() {
-  const paths = getPaths()
+async function runChapter(chapterId) {
+  const paths = getPaths(chapterId)
 
   if (!fileExists(paths.chapterOutlineMd)) {
     console.error(`Error: ${paths.chapterOutlineMd} not found`)
-    process.exit(1)
+    throw new Error(`Missing outline for chapter ${chapterId}`)
   }
 
   const apiKey = getApiKey()
@@ -109,14 +114,28 @@ async function main() {
   writeJson(paths.mergedFile, merged)
   writeJson(paths.hashFile, hashes)
 
-  // 复制到 public/data/prologue.json（仅 prologue）
-  if (chapterId === 'prologue') {
-    const destPath = resolvePath('public', 'data', 'prologue.json')
-    writeText(destPath, JSON.stringify(merged, null, 2))
-    console.log(`[PIPE] Done. prologue.json updated at ${destPath}`)
-  } else {
-    console.log(`[PIPE] Done. merged.json at ${paths.mergedFile}`)
+  const publicSlug = chapterId === 'prologue' ? 'prologue' : chapterId
+  const destPath = resolvePath('public', 'data', `${publicSlug}.json`)
+  writeText(destPath, JSON.stringify(merged, null, 2))
+  console.log(`[PIPE] Done. ${publicSlug}.json -> ${destPath}`)
+}
+
+async function main() {
+  if (runAll) {
+    const candidates = ['prologue', '折戟原']
+    const toRun = candidates.filter((id) => fileExists(resolvePath('design', chapterOutlineMdName(id))))
+    if (toRun.length === 0) {
+      console.error('Error: --all found no design/*大纲.md')
+      process.exit(1)
+    }
+    for (const id of toRun) {
+      console.log(`\n[PIPE] ===== chapter: ${id} =====`)
+      await runChapter(id)
+    }
+    return
   }
+  const chapterId = chapterIdArg || 'prologue'
+  await runChapter(chapterId)
 }
 
 main().catch((e) => {

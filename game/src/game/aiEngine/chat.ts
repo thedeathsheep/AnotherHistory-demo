@@ -26,6 +26,8 @@ export interface ChatOptions {
   model?: string
   /** When set, model defaults via getModelForRole(role). */
   agentRole?: AIAgentRole
+  /** After retries, throw last error instead of returning null (for user-visible failures). */
+  throwOnFailure?: boolean
 }
 
 function resolveModel(opts: ChatOptions): string {
@@ -39,8 +41,11 @@ export async function chat(
   messages: { role: string; content: string }[],
   options: ChatOptions | number = {}
 ): Promise<string | null> {
-  const opts = typeof options === 'number' ? { maxTokens: options, label: 'chat' } : { maxTokens: 1024, label: 'chat', ...options }
-  const { maxTokens = 1024, label = 'chat' } = opts
+  const opts =
+    typeof options === 'number'
+      ? { maxTokens: options, label: 'chat', throwOnFailure: false }
+      : { maxTokens: 1024, label: 'chat', throwOnFailure: false, ...options }
+  const { maxTokens = 1024, label = 'chat', throwOnFailure = false } = opts
   const model = resolveModel(opts)
 
   const start = Date.now()
@@ -71,7 +76,9 @@ export async function chat(
       const content = data.choices?.[0]?.message?.content
       const ms = Date.now() - start
       log(label, `done in ${ms}ms, ok=${Boolean(content?.trim())}`)
-      return content?.trim() ?? null
+      const trimmed = content?.trim() ?? null
+      if (!trimmed && throwOnFailure) throw new Error('Empty model response')
+      return trimmed
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e))
       if (attempt < MAX_RETRIES) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
@@ -82,6 +89,7 @@ export async function chat(
     console.warn(`[AI] ${w}`)
     emitAiDebug(w, 'warn')
   }
+  if (throwOnFailure && lastErr) throw lastErr
   return null
 }
 

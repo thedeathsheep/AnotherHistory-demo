@@ -1,92 +1,12 @@
 // Game types aligned with GDD and skeleton JSON
 
+import type { HaiDimension, HaiId } from './haiCatalog'
+import { HAI_DIMENSIONS, HAI_IDS, HAI_LABELS } from './haiCatalog'
+
+export type { HaiDimension, HaiId }
+export { HAI_DIMENSIONS, HAI_IDS, HAI_LABELS }
+
 export type StatKey = 'ming_zhu' | 'gen_jiao' | 'jian_zhao'
-
-/** 害：首批 5 种 + GDD 四维度扩展（神/身/业/数） */
-export type HaiId =
-  | 'ling_sun'
-  | 'shou_chao'
-  | 'bi_hui'
-  | 'jing_zhe'
-  | 'ling_pei'
-  | 'ran_mo'
-  | 'zhong_ying'
-  | 'shi_yu'
-  | 'zhai_chang'
-  | 'wei_tuo'
-  | 'kong_xiang'
-  | 'lie_ming'
-  | 'du_mo'
-  | 'yi_xing'
-  | 'duan_nian'
-  | 'xiu_shi'
-  | 'jie_gu'
-  | 'fan_shi'
-
-export type HaiDimension = '神' | '身' | '业' | '数'
-
-export const HAI_IDS: HaiId[] = [
-  'ling_sun',
-  'shou_chao',
-  'bi_hui',
-  'jing_zhe',
-  'ling_pei',
-  'ran_mo',
-  'zhong_ying',
-  'shi_yu',
-  'zhai_chang',
-  'wei_tuo',
-  'kong_xiang',
-  'lie_ming',
-  'du_mo',
-  'yi_xing',
-  'duan_nian',
-  'xiu_shi',
-  'jie_gu',
-  'fan_shi',
-]
-
-export const HAI_LABELS: Record<HaiId, string> = {
-  ling_sun: '灵损',
-  shou_chao: '受潮',
-  bi_hui: '避讳',
-  jing_zhe: '惊蛰',
-  ling_pei: '灵沛',
-  ran_mo: '染墨',
-  zhong_ying: '重影',
-  shi_yu: '失语',
-  zhai_chang: '债偿',
-  wei_tuo: '伪托',
-  kong_xiang: '空响',
-  lie_ming: '裂名',
-  du_mo: '蠹墨',
-  yi_xing: '易形',
-  duan_nian: '断念',
-  xiu_shi: '锈蚀',
-  jie_gu: '借骨',
-  fan_shi: '反噬',
-}
-
-export const HAI_DIMENSIONS: Record<HaiId, HaiDimension> = {
-  ling_sun: '神',
-  ran_mo: '神',
-  zhong_ying: '神',
-  shi_yu: '神',
-  ling_pei: '神',
-  zhai_chang: '神',
-  wei_tuo: '神',
-  kong_xiang: '神',
-  lie_ming: '神',
-  du_mo: '神',
-  yi_xing: '神',
-  duan_nian: '神',
-  shou_chao: '身',
-  xiu_shi: '身',
-  jie_gu: '身',
-  bi_hui: '业',
-  fan_shi: '业',
-  jing_zhe: '数',
-}
 
 export type ItemCategory = '厌胜' | '仪轨' | '随身器'
 
@@ -149,6 +69,16 @@ export interface NodeGate {
   stat_min?: Partial<Record<StatKey, number>>
 }
 
+/** 可选：剧情人物（AI-E16） */
+export interface RealmNpc {
+  id: string
+  name: string
+  /** 一句话人设，供 prompt */
+  personality?: string
+  /** 关联线索 id（如风评） */
+  related_clue_ids?: string[]
+}
+
 export interface Node {
   node_id: string
   plot_guide?: string[]
@@ -165,6 +95,8 @@ export interface Node {
   required_item?: string
   /** 额外门禁：须掌握某线索 */
   unlock_clue?: string
+  /** 本节点出现的 NPC（可选） */
+  npcs?: RealmNpc[]
 }
 
 /** Optional Engine v2 Planner fields merged from skeleton into design-seed at runtime. */
@@ -184,17 +116,51 @@ export interface RealmPlannerSeed {
   }>
 }
 
+/** D-1: 剧情点（多节点），可嵌在事件下 */
+export interface PlotPoint {
+  id: string
+  name?: string
+  nodes: Node[]
+}
+
+/** D-1: 事件（多剧情点）；与扁平 `nodes` 二选一或由加载器归一 */
+export interface RealmEvent {
+  id: string
+  name?: string
+  plot_points: PlotPoint[]
+}
+
 export interface Realm {
   id: string
   name: string
   entry_node: string
+  /** 扁平节点列表（legacy 或 normalizeLoadedRealm 后必有） */
   nodes: Node[]
+  /** D-1 层级：有则可在无 nodes 时由加载器展开 */
+  events?: RealmEvent[]
   /** When present, merged into DesignSeed.realms for this id (single source with narrative nodes). */
   planner_seed?: RealmPlannerSeed
 }
 
 export interface Skeleton {
   realms: Realm[]
+}
+
+/** 若已有非空 nodes 则沿用；否则从 events 展开（深度优先：事件 → 剧情点 → 节点） */
+export function flattenRealmNodes(realm: Realm): Node[] {
+  if (realm.nodes?.length) return realm.nodes
+  const out: Node[] = []
+  for (const ev of realm.events ?? []) {
+    for (const pp of ev.plot_points ?? []) {
+      for (const n of pp.nodes ?? []) out.push(n)
+    }
+  }
+  return out
+}
+
+export function normalizeLoadedRealm(realm: Realm): Realm {
+  const nodes = flattenRealmNodes(realm)
+  return { ...realm, nodes }
 }
 
 export const MING_ZHU: StatKey = 'ming_zhu'

@@ -6,6 +6,8 @@
 export {
   generateNodeNarrative,
   generateYishi,
+  generateItemNarrative,
+  generateNpcDialogue,
   generateChoices,
   generateDynamicBeatNarrative,
   generateDynamicBeatChoices,

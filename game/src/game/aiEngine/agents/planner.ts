@@ -26,7 +26,8 @@ function buildPlannerUserPrompt(realm: RealmSeed, seed: DesignSeed, playthroughH
 请生成完整 JSON。`
 }
 
-function parseOutline(json: string, realmId: string): StoryOutline | null {
+/** Exported for unit tests / fixtures. */
+export function parseOutline(json: string, realmId: string): StoryOutline | null {
   try {
     const o = JSON.parse(json) as StoryOutline
     if (!o || o.realm_id !== realmId || !Array.isArray(o.beats) || o.beats.length < 3) return null
@@ -73,6 +74,7 @@ export async function runPlanner(
     maxTokens: 1800,
     label: 'runPlanner',
     agentRole: 'planner',
+    throwOnFailure: true,
   })
   if (!raw?.trim()) return null
   let text = raw.trim()

@@ -96,7 +96,7 @@
 - [x] **AI-E13** 主叙事 prompt：支持 plot_guide、taboo、objective、三相档位；叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列，要求具体情节点或与前后衔接
 - [x] **AI-E14** 异史凝练 prompt：支持结论标签、抉择摘要、coreFacts、可选 [真史][疑伪][秽] 标签
 - [x] **AI-E15** `generateChoices` + 凭物：持物时 `(凭物)` 念头；**叙事成稿后再请求**，并注入 **【当前境遇正文】**（`sceneNarrative`），与骨架 next 合并
-- **AI-E16** 物品/剧情人物 prompt（M2 后）：以物寻线、NPC 对话与态度，独立模板
+- [x] **AI-E16** 物品/NPC：`prompts/item.ts`、`prompts/npc.ts`；`generateItemNarrative` / `generateNpcDialogue`（[`game/src/game/aiEngine/index.ts`](game/src/game/aiEngine/index.ts)）；`Node.npcs`、`RealmNpc`
 - **AI-E17** 提示词版本化：模板文件纳入 Git，每次修改打 tag 或 commit 说明，便于回归
 
 ### 2.5 与策划内容的交互逻辑（Skeleton Interaction）
@@ -173,14 +173,14 @@
 - [x] **M4-2** `InteractionBox`（交互按钮进 Overlay）
 - [~] **M4-3** 卷轴：md 侧栏 + 小屏 Overlay「卷轴」入口；与 GDD「随时独立层」仍可再统一
 - **M4-4** 主界面 **可再 polish**（槽位选择屏等）
-- **M4-5** Electron 打包 **未接** electron-builder 等
-- [~] **M4-6** `npm run test:ai` 已覆盖 plot_guide + `violatesTaboo` 静态用例；TS 侧大规模 fixture、CI 接入可再加
+- [x] **M4-5** Electron **electron-builder**：`npm run electron:pack`（见 `game/package.json` `build` 字段）
+- [x] **M4-6** `npm run test:ai` + **Vitest** `npm run test:unit`；GitHub Actions `.github/workflows/ci.yml`（`game` 目录 build + test）
 
 ---
 
 ## 四、骨架与数据层增强
 
-- **D-1** 事件/剧情点层级：界 > 事件 > 剧情点 > 节点（可先扁平兼容）
+- [x] **D-1** 事件/剧情点层级：`Realm.events` + `PlotPoint` + `flattenRealmNodes` / `normalizeLoadedRealm`（[`game/src/game/types.ts`](game/src/game/types.ts)、[`game/src/game/skeleton.ts`](game/src/game/skeleton.ts)）
 - [x] **D-2** `gate` + `required_item` / `unlock_clue`
 - [~] **D-3** `hai_delta` 已有；独立 `hai_trigger` 字段 **未加**
 - **D-4** 指令包扩展：plot_guide（核心剧情导向，可选）、Hais、Items、Clues，与 GDD 5.5 对齐；骨架字段优先用 plot_guide，兼容 truth_anchors

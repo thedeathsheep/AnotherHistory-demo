@@ -21,6 +21,7 @@ import {
   hydrateSlotsFromElectron,
 } from '@/game/save'
 import { isAiEngineV2Enabled } from '@/game/aiEngine/v2Enabled'
+import { tryBeginDynamicStory } from '@/game/aiEngine/beginDynamicStory'
 import { WorldStateGraphManager, graphFromJSON } from '@/game/worldStateGraph'
 import { evaluateEnding, getEnding } from '@/game/endings'
 import type { Skeleton, Node, Choice } from '@/game/types'
@@ -30,14 +31,14 @@ import {
   generateChoices,
   generateDynamicBeatNarrative,
   generateDynamicBeatChoices,
-  runPlanner,
   runDirector,
   AI_DEBUG,
   type LayeredContextInput,
 } from '@/game/aiBridge'
-import { loadDesignSeed, realmSeedById } from '@/game/designSeed'
+import { loadDesignSeed } from '@/game/designSeed'
 import { beatNextToken, directorGateHintToNodeGatePatch, type NodeDirective } from '@/game/storyRuntime'
-import { getApiKey } from '@/config'
+import { getApiKey, rememberUserApiKey } from '@/config'
+import { PLANNER_LOADING_HINT } from '@/plannerUi'
 import { NarrativeBox } from '@/components/NarrativeBox'
 import { StatusBox } from '@/components/StatusBox'
 import { ChoiceList } from '@/components/ChoiceList'
@@ -64,21 +65,15 @@ const AI_BODY_LOADING_HINT = '境遇正文凝练中…'
 /** 正文未出时不占位展示选项，仅作说明 */
 const SENSE_AFTER_BODY_HINT = '待正文落定，感应方显。'
 
-async function tryBeginDynamicStory(g: GameState, apiKey: string | null): Promise<void> {
-  if (!isAiEngineV2Enabled() || !apiKey || !g.realmId) return
-  const seed = await loadDesignSeed(g.skeleton)
-  const rs = realmSeedById(seed, g.realmId)
-  if (!seed || !rs) return
-  const hint =
-    g.playthroughGeneration >= 2
-      ? (g.lastPlaythroughSummary || g.getChoiceSummaryForYishi()).trim() || undefined
-      : undefined
-  try {
-    const outline = await runPlanner(apiKey, seed, g.realmId, hint)
-    if (outline) g.beginDynamicStory(outline, rs)
-  } catch {
-    /* keep skeleton */
-  }
+function getNextRealmAfter(
+  skeleton: Skeleton,
+  currentRealmId: string | null
+): { id: string; name: string } | null {
+  if (!currentRealmId || skeleton.realms.length < 2) return null
+  const i = skeleton.realms.findIndex((r) => r.id === currentRealmId)
+  if (i < 0 || i >= skeleton.realms.length - 1) return null
+  const r = skeleton.realms[i + 1]!
+  return { id: r.id, name: r.name }
 }
 
 export default function App() {
@@ -104,7 +99,7 @@ export default function App() {
   const narrativeCtxRef = useRef(new NarrativeContextManager())
   const directiveRef = useRef<NodeDirective | null>(null)
   const [streamBody, setStreamBody] = useState<{ nid: string; text: string } | null>(null)
-  const forceUpdate = () => setTick((t) => t + 1)
+  const forceUpdate = useCallback(() => setTick((t) => t + 1), [])
 
   const [pendingStartChoice, setPendingStartChoice] = useState<boolean | null>(null)
   const [panel, setPanel] = useState<Panel>(null)
@@ -112,8 +107,42 @@ export default function App() {
   const [saveSummaries, setSaveSummaries] = useState(listSaveSummaries())
   const [acquireBanner, setAcquireBanner] = useState<string | null>(null)
   const acquireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [plannerLoading, setPlannerLoading] = useState(false)
+  const [v2FallbackToast, setV2FallbackToast] = useState<string | null>(null)
+  const [awaitingApiKeyGate, setAwaitingApiKeyGate] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState('')
 
   const refreshSaveSummaries = () => setSaveSummaries(listSaveSummaries())
+
+  const runTryBeginDynamicStory = useCallback(async (g: GameState, key: string | null) => {
+    const showPlannerWait = isAiEngineV2Enabled() && Boolean(key)
+    if (showPlannerWait) setPlannerLoading(true)
+    try {
+      const r = await tryBeginDynamicStory(g, key)
+      if (r.outcome === 'planner_empty' || r.outcome === 'error') {
+        setV2FallbackToast(r.message ?? '')
+        window.setTimeout(() => setV2FallbackToast(null), 10000)
+      }
+    } finally {
+      if (showPlannerWait) setPlannerLoading(false)
+      forceUpdate()
+    }
+  }, [forceUpdate])
+
+  const completeBootstrapAfterKeyGate = useCallback(
+    async (resolvedKey: string | null) => {
+      if (!skeleton) return
+      setAwaitingApiKeyGate(false)
+      const g = new GameState(skeleton)
+      g.startRealm()
+      narrativeCtxRef.current.clear()
+      const k = resolvedKey?.trim()?.startsWith('sk-') ? resolvedKey.trim() : null
+      setApiKey(k)
+      await runTryBeginDynamicStory(g, k)
+      setGame(g)
+    },
+    [skeleton, runTryBeginDynamicStory]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -122,23 +151,37 @@ export default function App() {
         await hydrateSlotsFromElectron()
         const sk = await loadSkeleton()
         const key = await getApiKey()
-        if (!cancelled) {
-          setSkeleton(sk)
-          setApiKey(key)
-          refreshSaveSummaries()
-          if (AI_DEBUG) {
-            const m = `API key loaded: ${key ? `yes (${key.slice(0, 8)}…)` : 'no'}`
-            console.log(`[App] ${m}`)
-            emitAiDebug(`[App] ${m}`, 'log')
-          }
-          if (hasSave()) {
-            setPendingStartChoice(true)
-          } else {
-            const g = new GameState(sk)
-            g.startRealm()
-            narrativeCtxRef.current.clear()
-            await tryBeginDynamicStory(g, key)
-            setGame(g)
+        if (cancelled) return
+        setSkeleton(sk)
+        setApiKey(key)
+        refreshSaveSummaries()
+        if (AI_DEBUG) {
+          const m = `API key loaded: ${key ? `yes (${key.slice(0, 8)}…)` : 'no'}`
+          console.log(`[App] ${m}`)
+          emitAiDebug(`[App] ${m}`, 'log')
+        }
+        if (!key && !hasSave()) {
+          setAwaitingApiKeyGate(true)
+          setLoading(false)
+          return
+        }
+        if (hasSave()) {
+          setPendingStartChoice(true)
+        } else {
+          const g = new GameState(sk)
+          g.startRealm()
+          narrativeCtxRef.current.clear()
+          const showPlannerWait = isAiEngineV2Enabled() && Boolean(key)
+          if (showPlannerWait) setPlannerLoading(true)
+          try {
+            const r = await tryBeginDynamicStory(g, key)
+            if (!cancelled && (r.outcome === 'planner_empty' || r.outcome === 'error')) {
+              setV2FallbackToast(r.message ?? '')
+              window.setTimeout(() => setV2FallbackToast(null), 10000)
+            }
+          } finally {
+            if (!cancelled && showPlannerWait) setPlannerLoading(false)
+            if (!cancelled) setGame(g)
           }
         }
       } catch (e) {
@@ -422,14 +465,14 @@ export default function App() {
         acquireTimerRef.current = null
       }
       narrativeCtxRef.current.appendFact(`入界：${game.realmName}`)
-      void tryBeginDynamicStory(game, apiKey).finally(() => {
+      void runTryBeginDynamicStory(game, apiKey).finally(() => {
         saveGameState(game, activeSaveSlot)
         forceUpdate()
       })
       setPanel(null)
       forceUpdate()
     },
-    [game, activeSaveSlot, apiKey]
+    [game, activeSaveSlot, apiKey, runTryBeginDynamicStory]
   )
 
   useEffect(() => {
@@ -487,7 +530,48 @@ export default function App() {
     setActiveSaveSlot(0)
     setPendingStartChoice(false)
     refreshSaveSummaries()
-    void tryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
+    void runTryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
+  }
+
+  if (awaitingApiKeyGate && skeleton) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-5 max-w-lg mx-auto w-full">
+        <p className="text-stone-300 text-center" style={{ fontSize: 'var(--dot-size)' }}>
+          配置 Aihubmix API Key（sk- 开头）可启用动态大纲与 AI 叙事。也可跳过，仅体验骨架流程。
+        </p>
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder="sk-..."
+          value={apiKeyInput}
+          onChange={(e) => setApiKeyInput(e.target.value)}
+          className="w-full px-3 py-2 rounded border border-stone-600 bg-stone-900 text-stone-200"
+          style={{ fontSize: 'var(--dot-size)' }}
+        />
+        <div className="flex flex-wrap gap-3 justify-center">
+          <button
+            type="button"
+            className="ui-btn px-5 py-2"
+            style={{ fontSize: 'var(--dot-size)' }}
+            onClick={() => {
+              const t = apiKeyInput.trim()
+              if (t.startsWith('sk-')) rememberUserApiKey(t)
+              void completeBootstrapAfterKeyGate(t.startsWith('sk-') ? t : null)
+            }}
+          >
+            保存并开始
+          </button>
+          <button
+            type="button"
+            className="ui-btn px-5 py-2"
+            style={{ fontSize: 'var(--dot-size)' }}
+            onClick={() => void completeBootstrapAfterKeyGate(null)}
+          >
+            跳过，骨架游玩
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (loading || !skeleton || (pendingStartChoice && !game)) {
@@ -518,7 +602,11 @@ export default function App() {
     }
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4">
-        {error ? <p className="text-red-400">{error}</p> : <p className="text-stone-400">加载中…</p>}
+        {error ? (
+          <p className="text-red-400">{error}</p>
+        ) : (
+          <p className="text-stone-400">{plannerLoading ? PLANNER_LOADING_HINT : '加载中…'}</p>
+        )}
         {window.electronAPI?.isElectron && (
           <button
             type="button"
@@ -559,6 +647,7 @@ export default function App() {
   const isConclusion = !node && game?.yishiEntries.length && !pendingYishi
   const endingId = isConclusion ? evaluateEnding(game) : null
   const ending = endingId ? getEnding(endingId) : null
+  const nextRealmAfter = getNextRealmAfter(skeleton, game.realmId)
 
   const dianPoPct = dianPoConsumePercent(game.clues.length)
   const canDianPo = node && game.stats.jian_zhao >= dianPoPct
@@ -717,7 +806,7 @@ export default function App() {
       acquireTimerRef.current = null
     }
     refreshSaveSummaries()
-    void tryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
+    void runTryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
   }
 
   const handleDianPo = () => {
@@ -741,6 +830,22 @@ export default function App() {
 
   return (
     <div className="flex-1 flex flex-col max-w-6xl mx-auto w-full p-4 gap-4 min-h-0">
+      {v2FallbackToast ? (
+        <div
+          role="alert"
+          className="fixed top-3 left-1/2 z-[8000] max-w-lg -translate-x-1/2 rounded border border-amber-600/80 bg-stone-900/95 px-4 py-2 text-sm text-amber-100 shadow-lg"
+        >
+          {v2FallbackToast}
+          <button
+            type="button"
+            className="ml-2 text-stone-400 hover:text-stone-200"
+            aria-label="关闭"
+            onClick={() => setV2FallbackToast(null)}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       <header className="text-center py-3 ui-frame flex flex-col gap-2 shrink-0">
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <h1 className="text-[var(--dot-text)]" style={{ fontSize: 'var(--dot-size)' }}>
@@ -785,19 +890,31 @@ export default function App() {
             streaming={Boolean(node && streamBody?.nid === node.node_id && narrativeLoading)}
             reserveFooter={!node}
             footerAction={
-              pendingYishi !== null ? (
-                <button
-                  ref={pendingYishiRef}
-                  type="button"
-                  onClick={handleWriteYishiToScroll}
-                  onKeyDown={(e) => e.key === 'Enter' && handleWriteYishiToScroll()}
-                  aria-label="收入卷轴"
-                  className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
-                  style={{ fontSize: 'var(--dot-size)' }}
-                >
-                  收入卷轴
-                </button>
-              ) : null
+              <>
+                {pendingYishi !== null ? (
+                  <button
+                    ref={pendingYishiRef}
+                    type="button"
+                    onClick={handleWriteYishiToScroll}
+                    onKeyDown={(e) => e.key === 'Enter' && handleWriteYishiToScroll()}
+                    aria-label="收入卷轴"
+                    className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
+                    style={{ fontSize: 'var(--dot-size)' }}
+                  >
+                    收入卷轴
+                  </button>
+                ) : null}
+                {isConclusion && !game.isGameOver() && nextRealmAfter ? (
+                  <button
+                    type="button"
+                    onClick={() => handleEnterRealm(nextRealmAfter.id)}
+                    className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
+                    style={{ fontSize: 'var(--dot-size)' }}
+                  >
+                    前往下一界：{nextRealmAfter.name}
+                  </button>
+                ) : null}
+              </>
             }
           />
 
@@ -994,12 +1111,12 @@ export default function App() {
             setActiveSaveSlot(0)
             setPanel(null)
             refreshSaveSummaries()
-            void tryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
+            void runTryBeginDynamicStory(g, apiKey).then(() => forceUpdate())
           }}
           realms={skeleton.realms.map((r) => ({ id: r.id, name: r.name }))}
           currentRealmId={game.realmId}
           onEnterRealm={handleEnterRealm}
-          realmSwitchBusy={narrativeLoading || yishiLoading || choicesLoading}
+          realmSwitchBusy={narrativeLoading || yishiLoading || choicesLoading || plannerLoading}
         />
       </Overlay>
 

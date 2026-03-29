@@ -45,49 +45,127 @@
       "nodes": [
         {
           "node_id": "ZheJiYuan_01",
-          "truth_anchors": [
-            "铁腥味",
-            "影子"
-          ],
-          "taboo": [
-            "不可回头"
-          ],
-          "objective": "抵达雾中真相或脱出",
+          "truth_anchors": ["铁腥味", "影子"],
+          "taboo": ["不可回头"],
+          "objective": "穿过雾与歧路，向余热处去",
           "description": "大雾。你闻到一股[铁腥味]。不对，那是某种*肉质腐烂*的味道。\n你察觉到地上的影子在抖。雾气里浮现出很多门。",
           "choices": [
             {
               "text": "憋气钻进那团铁青色的雾。",
-              "next": "ZheJiYuan_02",
-              "state": {
-                "ming_zhu": -5,
-                "gen_jiao": -10
-              }
+              "next": "ZheJiYuan_02a",
+              "state": { "ming_zhu": -5, "gen_jiao": -10 }
             },
             {
               "text": "闭上眼，顺着影子的拉力向后退。",
-              "next": "ZheJiYuan_02",
-              "state": {
-                "jian_zhao": 5
-              }
+              "next": "ZheJiYuan_02b",
+              "state": { "jian_zhao": 5 }
             },
             {
               "text": "尝试看清雾中的真相。",
+              "next": "ZheJiYuan_02c",
+              "state": { "jian_zhao": -10 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_02a",
+          "truth_anchors": ["雾", "铁锈"],
+          "taboo": ["不可回头"],
+          "objective": "在雾中稳住根脚，辨明风向",
+          "description": "肺里灌满冷雾。铁锈刮过喉头，像有人把钝刀在骨缝里拖。\n远处隐约有[门]框的轮廓一明一灭，风从左侧来，带着潮腥。",
+          "choices": [
+            {
+              "text": "压低身子，顺风蹭向那线微光。",
+              "next": "ZheJiYuan_03",
+              "state": { "gen_jiao": 3 }
+            },
+            {
+              "text": "停步调息，先记住铁锈味的浓淡。",
+              "next": "ZheJiYuan_03",
+              "state": { "jian_zhao": 3 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_02b",
+          "truth_anchors": ["影子", "歧路"],
+          "taboo": ["不可回头"],
+          "objective": "借影而行，勿失来路之感",
+          "description": "后退并非怯懦——影子在脚下拉长，像另一双脚替你探路。\n雾薄处露出几道车辙，辙心嵌着黑红色的渣，像干涸的血与锈。",
+          "choices": [
+            {
+              "text": "沿最旧的那道辙迹前行。",
+              "next": "ZheJiYuan_03",
+              "state": { "ming_zhu": 2 }
+            },
+            {
+              "text": "踩住影子最浓的一处，强行转向余热方向。",
+              "next": "ZheJiYuan_03",
+              "state": { "gen_jiao": -5, "jian_zhao": 5 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_02c",
+          "truth_anchors": ["雾", "门或歧路"],
+          "taboo": ["不可回头"],
+          "objective": "在眩惑中收束视线",
+          "description": "你硬睁双眼，雾纹里浮出重叠的[门]影，像有人把无数出口叠在同一点。\n铁腥味陡然变甜，太阳穴突突地跳。",
+          "choices": [
+            {
+              "text": "只认一扇，无视其余虚影。",
+              "next": "ZheJiYuan_03",
+              "state": { "ming_zhu": -8, "jian_zhao": 8 }
+            },
+            {
+              "text": "闭目三息，再睁时只看脚下一步。",
+              "next": "ZheJiYuan_03",
+              "state": { "ming_zhu": 5 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_03",
+          "truth_anchors": ["铁锈或兵戈意象", "原野或雾原"],
+          "taboo": ["不可回头"],
+          "objective": "确认余热与焚烧的方向",
+          "description": "三径在此收束。雾像被谁撕开一条帘，天光仍是灰的，但风里有了[焦炭与灰]的苦香。\n地平线上一缕烟柱细而直，影子在地上变得老实了。",
+          "choices": [
+            {
+              "text": "朝烟柱走，脚步放轻。",
+              "next": "ZheJiYuan_04",
+              "state": {}
+            },
+            {
+              "text": "先绕半圈，确认没有东西跟在身后。",
+              "next": "ZheJiYuan_04",
+              "state": { "jian_zhao": 4 }
+            }
+          ]
+        },
+        {
+          "node_id": "ZheJiYuan_04",
+          "truth_anchors": ["逆风", "焚烧坑"],
+          "taboo": ["不可回头"],
+          "objective": "接近仪迹所在之地",
+          "description": "脚下的土越来越烫。远处[焚烧坑]的轮廓像一枚溃烂的瞳孔，余烬暗红。\n灰在风中打旋，有人曾在此逆风而行——你能感到那道仪迹尚未散尽。",
+          "choices": [
+            {
+              "text": "踏入坑缘的焦土圈。",
               "next": "ZheJiYuan_02",
-              "state": {
-                "jian_zhao": -10
-              }
+              "state": { "ming_zhu": -3 }
+            },
+            {
+              "text": "停在圈外，先把四周记入心里。",
+              "next": "ZheJiYuan_02",
+              "state": { "jian_zhao": 5 }
             }
           ]
         },
         {
           "node_id": "ZheJiYuan_02",
-          "truth_anchors": [
-            "焚烧坑",
-            "草灰涂面"
-          ],
-          "taboo": [
-            "不可回头"
-          ],
+          "truth_anchors": ["焚烧坑", "草灰涂面"],
+          "taboo": ["不可回头"],
           "objective": "结案：获得异史线索【焚尸者言】",
           "description": "雾散开一隙。你看见远处有[焚烧坑]，余烬未冷。\n有人曾在此[草灰涂面]，逆风而行。影子在地上扎了根。",
           "choices": [
@@ -100,42 +178,30 @@
             {
               "text": "伸手触碰余烬。",
               "next": "ZheJiYuan_02_bad",
-              "state": {
-                "ming_zhu": -20
-              }
+              "state": { "ming_zhu": -20 }
             },
             {
               "text": "回头张望来路。",
               "next": "ZheJiYuan_02_bad",
-              "state": {
-                "ming_zhu": -15,
-                "gen_jiao": -15
-              }
+              "state": { "ming_zhu": -15, "gen_jiao": -15 }
             }
           ]
         },
         {
           "node_id": "ZheJiYuan_02_bad",
-          "truth_anchors": [
-            "铁腥味",
-            "影子"
-          ],
+          "truth_anchors": ["铁腥味", "影子"],
           "description": "你触犯了此地的因果。铁腥味再次涌来，影子缠上脚踝。\n命烛摇曳，根脚虚浮。",
           "choices": [
             {
               "text": "勉强定神，以灰涂面逆风离开。",
               "next": "__结案__",
-              "state": {
-                "ming_zhu": -5
-              },
+              "state": { "ming_zhu": -5 },
               "conclusion_label": "焚尸者言（残缺）"
             },
             {
               "text": "继续试探。",
               "next": "ZheJiYuan_02_bad",
-              "state": {
-                "ming_zhu": -10
-              }
+              "state": { "ming_zhu": -10 }
             }
           ]
         }

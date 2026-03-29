@@ -1,4 +1,5 @@
 import type { Node, Realm, Skeleton } from './types'
+import { normalizeLoadedRealm } from './types'
 
 let cachedSkeleton: Skeleton | null = null
 
@@ -12,7 +13,7 @@ async function loadRealm(path: string): Promise<Realm | null> {
   const res = await fetch(path)
   if (!res.ok) return null
   const data = (await res.json()) as Realm
-  return data
+  return normalizeLoadedRealm(data)
 }
 
 /** Load skeleton (multi-realm) from file (e.g. skeleton.json) */
@@ -46,15 +47,15 @@ export async function loadSkeleton(): Promise<Skeleton> {
     }
     const sk = await loadSkeletonFile(path)
     if (sk?.realms?.length) {
-      realms.push(...sk.realms)
+      realms.push(...sk.realms.map((r) => normalizeLoadedRealm(r)))
     }
   }
 
   if (realms.length === 0) {
     const fallback = await loadSkeletonFile(dataUrl('/data/skeleton.json'))
     if (fallback?.realms?.length) {
-      cachedSkeleton = fallback
-      return fallback
+      cachedSkeleton = { realms: fallback.realms.map((r) => normalizeLoadedRealm(r)) }
+      return cachedSkeleton
     }
     throw new Error('Failed to load skeleton: no realms found')
   }

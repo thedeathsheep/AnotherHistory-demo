@@ -170,6 +170,214 @@ function buildHaiEffects(hais: Record<HaiId, number>): string[] {
     '名字被拆、谐音替换。',
     '称谓系统持续崩坏。'
   )
+  pushHai(
+    hints,
+    'jiao_ke',
+    hais.jiao_ke ?? 0,
+    '喉头略干，想找「饮」。',
+    '渴求位格之饮，物象边缘发糊。',
+    '焦渴入骨：非水可解，唯寻带位格之物。'
+  )
+  pushHai(
+    hints,
+    'feng_mo',
+    hais.feng_mo ?? 0,
+    '光影对比略刺目。',
+    '黄昏感加重，诸害氛围一并放大。',
+    '逢魔时刻：明暗撕扯，不安加倍。'
+  )
+  pushHai(
+    hints,
+    'de_shi',
+    hais.de_shi ?? 0,
+    '偶有一瞬「对劲」。',
+    '气机顺遂，细节更易辨。',
+    '得时：鉴照式清明，最优路径若隐若现。'
+  )
+  pushHai(
+    hints,
+    'ru_ding',
+    hais.ru_ding ?? 0,
+    '时间感略迟滞。',
+    '动作与回响拉长，尘埃可闻。',
+    '入定陷阱：反馈极慢，逻辑黏稠。'
+  )
+  pushHai(
+    hints,
+    'bei_yin',
+    hais.bei_yin ?? 0,
+    '亮处略眩，暗处更深。',
+    '光源不可直视，轮廓靠猜。',
+    '背阴：视觉剥夺，唯触与声。'
+  )
+  pushHai(
+    hints,
+    'lv_ling',
+    hais.lv_ling ?? 0,
+    '言下有禁，措辞略束。',
+    '特定字眼不可出口之感。',
+    '律令锁言：犯则惊蛰骤起。'
+  )
+  pushHai(
+    hints,
+    'jie_huo',
+    hais.jie_huo ?? 0,
+    '暗处多一眼「借来的」视线。',
+    '死者视野碎片渗入。',
+    '借火：见禁忌真相，命烛暗耗。'
+  )
+  pushHai(
+    hints,
+    'mi_xiang',
+    hais.mi_xiang ?? 0,
+    '方位词略含混。',
+    '来路与去向互相打架。',
+    '迷向：回头路隐伏，逢魔权重升。'
+  )
+  pushHai(
+    hints,
+    'zhi_ju',
+    hais.zhi_ju ?? 0,
+    '纸角微霉，皮发紧。',
+    '消耗物易脆、易灰。',
+    '纸疽：用物可能失效并落可疑屑。'
+  )
+  pushHai(
+    hints,
+    'ying_ji',
+    hais.ying_ji ?? 0,
+    '影比人先动半步。',
+    '镜面式重复动作。',
+    '影寄：影语选项诱人，反噬暗涨。'
+  )
+  pushHai(
+    hints,
+    'xue_zao',
+    hais.xue_zao ?? 0,
+    '耳底血流声。',
+    '关键词易被噪声盖住。',
+    '血噪：音景压过要害字。'
+  )
+  pushHai(
+    hints,
+    'duan_xiang',
+    hais.duan_xiang ?? 0,
+    '人味变薄。',
+    '增益易折半，信任线难开。',
+    '断香：护佑消散，NPC 信任极难。'
+  )
+  pushHai(
+    hints,
+    'chen_sha',
+    hais.chen_sha ?? 0,
+    '举步略沉。',
+    '大动作多耗根脚，反馈变慢。',
+    '沉砂：迟滞与额外根脚损耗。'
+  )
+  pushHai(
+    hints,
+    'kou_zhai',
+    hais.kou_zhai ?? 0,
+    '开口有代价之感。',
+    '言语类选项隐含命烛/灵损。',
+    '口债：字债字还，或可换禁忌。'
+  )
+  pushHai(
+    hints,
+    'mu_zhang',
+    hais.mu_zhang ?? 0,
+    '亮更刺，黑更吞。',
+    '关键细节常被省略。',
+    '目障：靠触嗅推断环境。'
+  )
+  pushHai(
+    hints,
+    'gan_ying',
+    hais.gan_ying ?? 0,
+    '念头牵引感。',
+    '选项似被外力收窄。',
+    '感应：直觉强拽，抉择框内博弈感。'
+  )
+  pushHai(
+    hints,
+    'tuo_gu',
+    hais.tuo_gu ?? 0,
+    '骨软一步。',
+    '重物难负，根脚似锁。',
+    '脱骨：不可负重，根脚低位格，可钻隙。'
+  )
+  pushHai(
+    hints,
+    'lin_hua',
+    hais.lin_hua ?? 0,
+    '皮生冷鳞感。',
+    '对湿与痛钝，对暖与人性线索钝。',
+    '鳞化：身异化，温暖与人性线索难入。'
+  )
+  pushHai(
+    hints,
+    'fen_xin',
+    hais.fen_xin ?? 0,
+    '心跳赶字。',
+    '句短势急。',
+    '焚心：极度急促，限时抉择压力（氛围）。'
+  )
+  pushHai(
+    hints,
+    'xuan_si',
+    hais.xuan_si ?? 0,
+    '肩背有线牵制。',
+    '行动似被代行（氛围）。',
+    '悬丝：因果线操弄，失控感。'
+  )
+  pushHai(
+    hints,
+    'gong_sheng',
+    hais.gong_sheng ?? 0,
+    '他者之痛渗入句中。',
+    '异类渴望与己重叠。',
+    '共生：异类存亡与己相连。'
+  )
+  pushHai(
+    hints,
+    'chang_ming',
+    hais.chang_ming ?? 0,
+    '真史换寿之感。',
+    '每得高价值真史，命烛上限似薄一层。',
+    '偿命：记录以寿为墨。'
+  )
+  pushHai(
+    hints,
+    'dao_shi',
+    hais.dao_shi ?? 0,
+    '语序偶逆，果在因先。',
+    '须逆向推断起因（氛围）。',
+    '倒时：叙事逆流，逻辑倒读。'
+  )
+  pushHai(
+    hints,
+    'zhong_ya',
+    hais.zhong_ya ?? 0,
+    '字少句硬。',
+    '描述极短、极涩。',
+    '重压：位格压迫，文本压缩。'
+  )
+  pushHai(
+    hints,
+    'wu_guang',
+    hais.wu_guang ?? 0,
+    '无光之黑（概念）。',
+    '停一切视觉修辞，余温与颤。',
+    '无光：唯内颤与外震。'
+  )
+  pushHai(
+    hints,
+    'tan_ta',
+    hais.tan_ta ?? 0,
+    '纸页焦边之感。',
+    '历史自焚，须速决（氛围）。',
+    '坍塌：时限压迫，不结案则坠入虚空。'
+  )
   const covered = new Set(
     hints
       .map((h) => {

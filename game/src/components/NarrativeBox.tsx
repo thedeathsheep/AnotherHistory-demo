@@ -66,8 +66,8 @@ export function NarrativeBox({ title, content, className = '', jianZhaoLevel, re
       </div>
       {reserveFooter ? (
         <div
-          className="shrink-0 flex items-center mt-3 pt-3 border-t border-[var(--ui-frame-outer)]"
-          style={{ minHeight: FOOTER_HEIGHT, height: FOOTER_HEIGHT }}
+          className="shrink-0 flex min-h-[2.75rem] flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[var(--ui-frame-outer)]"
+          style={{ minHeight: FOOTER_HEIGHT }}
         >
           {footerAction ?? null}
         </div>
