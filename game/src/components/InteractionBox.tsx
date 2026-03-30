@@ -1,4 +1,14 @@
 import type { SaveSlotSummary } from '@/game/save'
+import { Tooltip } from '@/components/Tooltip'
+import {
+  TT_CHANGE_API,
+  TT_CLEAR_SLOT,
+  TT_ENTER_REALM,
+  TT_LOAD_SLOT,
+  TT_NEW_GAME_ALL,
+  TT_SAVE_MANUAL,
+  TT_SELECT_SLOT,
+} from '@/content/playerTooltips'
 
 export interface RealmPick {
   id: string
@@ -57,14 +67,16 @@ export function InteractionBox({
                   {here ? (
                     <span className="text-[var(--dot-muted)] ml-auto">当前界</span>
                   ) : (
-                    <button
-                      type="button"
-                      className="ui-btn px-3 py-1 text-sm ml-auto"
-                      disabled={realmSwitchBusy}
-                      onClick={() => onEnterRealm(r.id)}
-                    >
-                      前往
-                    </button>
+                    <Tooltip content={TT_ENTER_REALM}>
+                      <button
+                        type="button"
+                        className="ui-btn px-3 py-1 text-sm ml-auto"
+                        disabled={realmSwitchBusy}
+                        onClick={() => onEnterRealm(r.id)}
+                      >
+                        前往
+                      </button>
+                    </Tooltip>
                   )}
                 </li>
               )
@@ -74,13 +86,17 @@ export function InteractionBox({
       ) : null}
       <p className="text-[var(--dot-muted)] m-0">当前写入档位：{activeSlot + 1}</p>
       {onChangeApiKey ? (
-        <button type="button" className="ui-btn px-4 py-2 w-full" onClick={onChangeApiKey}>
-          API 与模型…
-        </button>
+        <Tooltip content={TT_CHANGE_API}>
+          <button type="button" className="ui-btn px-4 py-2 w-full" onClick={onChangeApiKey}>
+            API 与模型…
+          </button>
+        </Tooltip>
       ) : null}
-      <button type="button" className="ui-btn px-4 py-2 w-full" onClick={onSaveCurrent}>
-        手动存档（当前进度）
-      </button>
+      <Tooltip content={TT_SAVE_MANUAL}>
+        <button type="button" className="ui-btn px-4 py-2 w-full" onClick={onSaveCurrent}>
+          手动存档（当前进度）
+        </button>
+      </Tooltip>
       <div>
         <p className="text-[var(--dot-text)] mb-2">存档位</p>
         <ul className="list-none m-0 p-0 space-y-2">
@@ -97,26 +113,34 @@ export function InteractionBox({
                   界 {s.realmId ?? '？'} · 异史 {s.yishiCount} · 步 {s.stepsTaken}
                 </span>
               )}
-              <button type="button" className="ui-btn px-2 py-1 text-sm ml-auto" onClick={() => onSelectSlot(s.slot)}>
-                选用
-              </button>
+              <Tooltip content={TT_SELECT_SLOT}>
+                <button type="button" className="ui-btn px-2 py-1 text-sm ml-auto" onClick={() => onSelectSlot(s.slot)}>
+                  选用
+                </button>
+              </Tooltip>
               {!s.empty && (
                 <>
-                  <button type="button" className="ui-btn px-2 py-1 text-sm" onClick={() => onLoadSlot(s.slot)}>
-                    读取
-                  </button>
-                  <button type="button" className="ui-btn px-2 py-1 text-sm" onClick={() => onClearSlot(s.slot)}>
-                    删除
-                  </button>
+                  <Tooltip content={TT_LOAD_SLOT}>
+                    <button type="button" className="ui-btn px-2 py-1 text-sm" onClick={() => onLoadSlot(s.slot)}>
+                      读取
+                    </button>
+                  </Tooltip>
+                  <Tooltip content={TT_CLEAR_SLOT}>
+                    <button type="button" className="ui-btn px-2 py-1 text-sm" onClick={() => onClearSlot(s.slot)}>
+                      删除
+                    </button>
+                  </Tooltip>
                 </>
               )}
             </li>
           ))}
         </ul>
       </div>
-      <button type="button" className="ui-btn px-4 py-2 w-full border-red-800 text-red-300" onClick={onNewGameAll}>
-        清空全部存档并新游戏
-      </button>
+      <Tooltip content={TT_NEW_GAME_ALL}>
+        <button type="button" className="ui-btn px-4 py-2 w-full border-red-800 text-red-300" onClick={onNewGameAll}>
+          清空全部存档并新游戏
+        </button>
+      </Tooltip>
     </div>
   )
 }

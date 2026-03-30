@@ -18,6 +18,7 @@
     {
       "id": "prologue",
       "name": "序章",
+      "mode": "skeleton",
       "theme": "初醒、辨路、第一次感应与记录",
       "tension_curve": "平缓—惊变—收束",
       "estimated_beats": 12,

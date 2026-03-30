@@ -48,7 +48,16 @@ import {
 } from '@/config'
 import { PLANNER_LOADING_HINT } from '@/plannerUi'
 import { NarrativeBox } from '@/components/NarrativeBox'
+import { Tooltip } from '@/components/Tooltip'
 import { StatusBox } from '@/components/StatusBox'
+import {
+  ttDianPo,
+  TT_CLUES,
+  TT_DING_GAO,
+  TT_ITEMS,
+  ttNextRealm,
+  TT_SCROLL_INCOME,
+} from '@/content/playerTooltips'
 import { ChoiceList } from '@/components/ChoiceList'
 import { YishiBox } from '@/components/YishiBox'
 import { Overlay } from '@/components/Overlay'
@@ -58,6 +67,11 @@ import { InteractionBox } from '@/components/InteractionBox'
 import { AiDebugOverlay } from '@/components/AiDebugOverlay'
 import { emitAiDebug } from '@/game/aiEngine/aiDebugBus'
 import { NarrativeContextManager } from '@/game/narrativeContext'
+import {
+  mergeSkeletonChoicesWithAi,
+  getDisplayChoicesForNode,
+  isAwaitingChoiceHydration,
+} from '@/game/choiceDisplay'
 
 type FlyState = {
   text: string
@@ -72,6 +86,8 @@ type Panel = null | 'items' | 'clues' | 'menu' | 'yishi'
 const AI_BODY_LOADING_HINT = '境遇正文凝练中…'
 /** 正文未出时不占位展示选项，仅作说明 */
 const SENSE_AFTER_BODY_HINT = '待正文落定，感应方显。'
+/** 感应与骨架合并完成前，不展示可点列表 */
+const AI_CHOICE_LOADING_HINT = '感应凝练中…'
 
 const UI_HINT_DIANPO_KEY = 'anothistory.uiHint.dianPoSeen'
 const UI_HINT_MID_CONCLUDE_KEY = 'anothistory.uiHint.midConcludeSeen'
@@ -102,6 +118,8 @@ export default function App() {
   const [game, setGame] = useState<GameState | null>(null)
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [cachedNarrative, setCachedNarrative] = useState<Record<string, string>>({})
+  const cachedNarrativeRef = useRef(cachedNarrative)
+  cachedNarrativeRef.current = cachedNarrative
   const [cachedAiChoices, setCachedAiChoices] = useState<Record<string, Choice[]>>({})
   const [loading, setLoading] = useState(true)
   const [narrativeLoading, setNarrativeLoading] = useState(false)
@@ -225,7 +243,10 @@ export default function App() {
   }, [])
 
   const refreshNodeNarrative = useCallback(
-    async (node: Node): Promise<string | null> => {
+    async (
+      node: Node,
+      options?: { onStreamChunk?: (full: string) => void; streamSignal?: AbortSignal }
+    ): Promise<string | null> => {
       const hasPlotGuide = (node.plot_guide ?? node.truth_anchors)?.length
       if (!game || !apiKey || !hasPlotGuide) return null
       const stateFilter = {
@@ -238,11 +259,15 @@ export default function App() {
         choiceHistory: game.choiceHistory,
         hais: game.hais,
         narrativeFactSummary: narrativeCtxRef.current.getSummaryForPrompt(game.hais.ling_sun ?? 0),
+        onStreamChunk: options?.onStreamChunk,
+        streamSignal: options?.streamSignal,
       })
       return desc?.trim() || node.description || null
     },
     [game, apiKey]
   )
+  const refreshNodeNarrativeRef = useRef(refreshNodeNarrative)
+  refreshNodeNarrativeRef.current = refreshNodeNarrative
 
   const node = game?.getCurrentNode() ?? null
   const currentNodeId = node?.node_id ?? null
@@ -257,22 +282,44 @@ export default function App() {
     narrativeCtxRef.current.appendFact(`入点 ${node.node_id}${node.story_beat ? `：${node.story_beat}` : ''}`)
   }, [currentNodeId, node?.story_beat, game])
 
+  /** Fetch narrative when beat id / game / flags change only — not when `node` object identity or `cachedNarrative` updates (those would cancel in-flight stream or duplicate runs). */
   useEffect(() => {
-    if (loading || !skeleton || !game || !node || !useAi || !apiKey) return
-    const nid = node.node_id
-    if (cachedNarrative[nid] !== undefined) return
+    if (loading || !skeleton || !game) return
+    if (!useAi || !apiKey) {
+      setNarrativeLoading(false)
+      return
+    }
+    const cur = game.getCurrentNode()
+    if (!cur?.node_id) {
+      setNarrativeLoading(false)
+      return
+    }
+    const nid = cur.node_id
+    if (cachedNarrativeRef.current[nid] !== undefined) {
+      setNarrativeLoading(false)
+      return
+    }
 
     let cancelled = false
+
+    const streamCtrl = new AbortController()
     const isDyn = game.engineMode === 'dynamic' && nid.startsWith('dyn:')
+    const node = cur
 
     const runSkeleton = (): void => {
       setNarrativeLoading(true)
+      setStreamBody({ nid, text: '' })
       if (AI_DEBUG) {
         const m = `Trigger AI narrative for node: ${nid}`
         console.log(`[App] ${m}`)
         emitAiDebug(`[App] ${m}`, 'log')
       }
-      refreshNodeNarrative(node)
+      refreshNodeNarrativeRef.current(node, {
+        onStreamChunk: (full) => {
+          if (!cancelled) setStreamBody({ nid, text: full })
+        },
+        streamSignal: streamCtrl.signal,
+      })
         .then((desc) => {
           if (!cancelled) {
             const fallback = node.description?.trim() || node.story_beat || '（叙事加载失败）'
@@ -321,6 +368,7 @@ export default function App() {
           lingSunLevel: game.hais.ling_sun ?? 0,
           playerStateLine: playerLine,
           directive: dir,
+          realmSeed: game.dynamicRealmSeed ?? undefined,
         }
         const stateFilter = {
           ming_zhu: game.stats.ming_zhu,
@@ -334,12 +382,16 @@ export default function App() {
           onStreamChunk: (full) => {
             if (!cancelled) setStreamBody({ nid, text: full })
           },
+          storyBeat: node.story_beat,
+          streamSignal: streamCtrl.signal,
         })
         if (cancelled) return
         const body = text?.trim() || node.description?.trim() || '（叙事加载失败）'
         const gatePatch = directorGateHintToNodeGatePatch(dir?.gate_hint)
+        const latest = game.getCurrentNode()
+        const base = latest?.node_id === nid ? latest : node
         game.registerRuntimeNode({
-          ...node,
+          ...base,
           ...gatePatch,
           description: body,
           plot_guide: plotGuide.length ? plotGuide : ['境遇'],
@@ -353,7 +405,7 @@ export default function App() {
         }
       } finally {
         if (!cancelled) {
-          setStreamBody(null)
+          // Keep streamBody until cleanup (node/dep change): UI prefers cache over stream once committed; avoids empty-stream frame before cache.
           setNarrativeLoading(false)
         }
       }
@@ -364,8 +416,11 @@ export default function App() {
 
     return () => {
       cancelled = true
+      streamCtrl.abort()
+      setStreamBody(null)
     }
-  }, [loading, skeleton, game, currentNodeId, useAi, apiKey, node, refreshNodeNarrative, cachedNarrative])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- see JSDoc on this effect; refresh via refreshNodeNarrativeRef
+  }, [loading, skeleton, game, currentNodeId, useAi, apiKey])
 
   useEffect(() => {
     if (loading || !game || !node || !apiKey) return
@@ -427,11 +482,8 @@ export default function App() {
       : (node.description?.trim() || node.story_beat || '')
     generateChoices(apiKey, node, game.realmName, game.items, game.clues, requireItemThought, sceneNarrative)
       .then((aiChoices) => {
-        if (!cancelled && aiChoices.length > 0) {
-          const merged: Choice[] = aiChoices.map((ac) => {
-            const skeletonCh = node.choices.find((c) => c.next === ac.next) ?? node.choices[0]
-            return { ...skeletonCh, text: ac.text }
-          })
+        if (!cancelled) {
+          const merged = mergeSkeletonChoicesWithAi(node, aiChoices ?? [])
           setCachedAiChoices((prev) => ({ ...prev, [nid]: merged }))
         }
       })
@@ -778,20 +830,23 @@ export default function App() {
     Boolean(node && useAi && cachedNarrative[node.node_id] === undefined)
   const streamLine =
     streamBody && node && streamBody.nid === node.node_id ? streamBody.text : ''
+  /** Prefer committed cache over stream so final frame matches trim/registerRuntimeNode body (avoids post-stream flicker). */
+  const narrativeCached = node && cachedNarrative[node.node_id] !== undefined
   const narrativeContent = yishiLoading
     ? (yishiHint || '正在整理行旅……')
     : gateBlocked
       ? '【无法进入】条件未满足，无法感应此境。'
-      : node && streamLine
-        ? streamLine
-        : node && useAi && cachedNarrative[node.node_id] !== undefined
-          ? cachedNarrative[node.node_id]
-          : node
-            ? narrativeAwaitingAi || narrativeLoading
-              ? AI_BODY_LOADING_HINT
-              : node.description
-            : ''
-
+      : node && useAi && narrativeCached
+        ? cachedNarrative[node.node_id]!
+        : node && streamLine
+          ? streamLine
+          : node && useAi
+            ? AI_BODY_LOADING_HINT
+            : node
+              ? narrativeAwaitingAi || narrativeLoading
+                ? AI_BODY_LOADING_HINT
+                : node.description
+              : ''
   const isConclusion = !node && game?.yishiEntries.length && !pendingYishi
   const endingId = isConclusion ? evaluateEnding(game) : null
   const ending = endingId ? getEnding(endingId) : null
@@ -976,7 +1031,7 @@ export default function App() {
       /* ignore */
     }
     setDianPoGuideDismissed(true)
-    const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
+    const baseChoices = getDisplayChoicesForNode(node, cachedAiChoices, isDynamicBeat)
     const indexed = baseChoices
       .map((choice, origIndex) => ({ choice, origIndex }))
       .filter(({ choice }) => filterChoicesByClue([choice], game.clueIds()).length > 0)
@@ -1051,32 +1106,41 @@ export default function App() {
             content={showNarrativeContent}
             className="flex-1 min-h-[200px]"
             jianZhaoLevel={game ? (statLabel('jian_zhao', game.stats.jian_zhao) as '清彻' | '混浊' | '障目') : undefined}
-            streaming={Boolean(node && streamBody?.nid === node.node_id && narrativeLoading)}
+            streaming={Boolean(
+              node &&
+                streamBody?.nid === node.node_id &&
+                narrativeLoading &&
+                !narrativeCached
+            )}
             reserveFooter={!node}
             footerAction={
               <>
                 {pendingYishi !== null ? (
-                  <button
-                    ref={pendingYishiRef}
-                    type="button"
-                    onClick={handleWriteYishiToScroll}
-                    onKeyDown={(e) => e.key === 'Enter' && handleWriteYishiToScroll()}
-                    aria-label="收入卷轴"
-                    className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
-                    style={{ fontSize: 'var(--dot-size)' }}
-                  >
-                    收入卷轴
-                  </button>
+                  <Tooltip content={TT_SCROLL_INCOME}>
+                    <button
+                      ref={pendingYishiRef}
+                      type="button"
+                      onClick={handleWriteYishiToScroll}
+                      onKeyDown={(e) => e.key === 'Enter' && handleWriteYishiToScroll()}
+                      aria-label="收入卷轴"
+                      className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
+                      style={{ fontSize: 'var(--dot-size)' }}
+                    >
+                      收入卷轴
+                    </button>
+                  </Tooltip>
                 ) : null}
                 {isConclusion && !game.isGameOver() && nextRealmAfter ? (
-                  <button
-                    type="button"
-                    onClick={() => handleEnterRealm(nextRealmAfter.id)}
-                    className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
-                    style={{ fontSize: 'var(--dot-size)' }}
-                  >
-                    前往下一界：{nextRealmAfter.name}
-                  </button>
+                  <Tooltip content={ttNextRealm(nextRealmAfter.name)}>
+                    <button
+                      type="button"
+                      onClick={() => handleEnterRealm(nextRealmAfter.id)}
+                      className="ui-btn px-4 py-1.5 text-[var(--dot-size)] hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] transition-colors"
+                      style={{ fontSize: 'var(--dot-size)' }}
+                    >
+                      前往下一界：{nextRealmAfter.name}
+                    </button>
+                  </Tooltip>
                 ) : null}
               </>
             }
@@ -1097,38 +1161,54 @@ export default function App() {
             ) : null}
             <div className="flex flex-col gap-1 shrink-0 border-b border-[var(--ui-frame-outer)]">
               <div className="flex justify-between items-start gap-2 px-3 py-2">
-                <div className="flex flex-col gap-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className="text-[var(--dot-muted)]"
-                      style={{ fontSize: 'var(--dot-size)' }}
-                    >
-                      {node && beatNarrativeReady ? '【感应】' : ''}
-                    </span>
-                    {node && beatNarrativeReady && canDianPo && (
+                <div className="flex flex-col gap-1 min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {node && beatNarrativeReady && canDianPo ? (
+                      <Tooltip content={ttDianPo(dianPoPct)}>
+                        <button
+                          type="button"
+                          onClick={handleDianPo}
+                          disabled={choicesInteractLocked}
+                          className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] disabled:opacity-50 shrink-0"
+                          style={{ fontSize: 'var(--dot-size)' }}
+                        >
+                          点破
+                        </button>
+                      </Tooltip>
+                    ) : null}
+                    {node && beatNarrativeReady ? (
+                      <Tooltip content={TT_DING_GAO}>
+                        <button
+                          type="button"
+                          onClick={handleMidConclude}
+                          disabled={choicesInteractLocked}
+                          className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-muted)] hover:text-[var(--dot-text)] disabled:opacity-50 shrink-0"
+                          style={{ fontSize: 'var(--dot-size)' }}
+                        >
+                          定稿
+                        </button>
+                      </Tooltip>
+                    ) : null}
+                    <Tooltip content={TT_ITEMS}>
                       <button
                         type="button"
-                        onClick={handleDianPo}
-                        disabled={choicesInteractLocked}
-                        className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] disabled:opacity-50"
+                        onClick={() => setPanel('items')}
+                        className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] shrink-0"
                         style={{ fontSize: 'var(--dot-size)' }}
-                        title={`消耗 ${dianPoPct}% 鉴照，剔除一个选项`}
                       >
-                        点破
+                        物证
                       </button>
-                    )}
-                    {node && beatNarrativeReady && (
+                    </Tooltip>
+                    <Tooltip content={TT_CLUES}>
                       <button
                         type="button"
-                        onClick={handleMidConclude}
-                        disabled={choicesInteractLocked}
-                        className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-muted)] hover:text-[var(--dot-text)] disabled:opacity-50"
+                        onClick={() => setPanel('clues')}
+                        className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)] shrink-0"
                         style={{ fontSize: 'var(--dot-size)' }}
-                        title="不选当前感应，直接封笔：凝练一条异史后可收入卷轴；门禁未满足时也可借此离场。三相与书箱不变。"
                       >
-                        定稿
+                        线索
                       </button>
-                    )}
+                    </Tooltip>
                   </div>
                   {node && beatNarrativeReady && !dianPoGuideDismissed && canDianPo ? (
                     <p className="text-[var(--dot-muted)] mt-1 max-w-md" style={{ fontSize: '0.85em' }}>
@@ -1163,24 +1243,6 @@ export default function App() {
                       </button>
                     </p>
                   ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPanel('items')}
-                      className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)]"
-                      style={{ fontSize: 'var(--dot-size)' }}
-                    >
-                      物证
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPanel('clues')}
-                      className="ui-btn px-2 py-1 text-sm hover:border-[var(--dot-accent)] hover:text-[var(--dot-accent)]"
-                      style={{ fontSize: 'var(--dot-size)' }}
-                    >
-                      线索
-                    </button>
-                  </div>
                 </div>
                 <StatusBox stats={game.stats} hais={game.hais} inline />
               </div>
@@ -1209,9 +1271,24 @@ export default function App() {
                   >
                     {SENSE_AFTER_BODY_HINT}
                   </div>
+                ) : isAwaitingChoiceHydration({
+                    apiKey,
+                    node,
+                    canEnterNode: game.canEnterNode(node),
+                    cachedAiChoices,
+                    cachedNarrative,
+                    isDynamicBeat,
+                  }) ? (
+                  <div
+                    className="flex-1 flex items-center justify-center text-[var(--dot-muted)] px-3 text-center"
+                    style={{ fontSize: 'var(--dot-size)' }}
+                    role="status"
+                  >
+                    {AI_CHOICE_LOADING_HINT}
+                  </div>
                 ) : (
                   (() => {
-                    const baseChoices = [...node.choices, ...(cachedAiChoices[node.node_id] ?? [])]
+                    const baseChoices = getDisplayChoicesForNode(node, cachedAiChoices, isDynamicBeat)
                     const filtered = baseChoices
                       .map((choice, origIndex) => ({ choice, origIndex }))
                       .filter(({ choice }) => filterChoicesByClue([choice], game.clueIds()).length > 0)
@@ -1220,7 +1297,7 @@ export default function App() {
                       <ChoiceList
                         choices={filtered.map((x) => x.choice)}
                         onSelect={(fi) => handleChoice(filtered[fi].choice)}
-                        disabled={choicesInteractLocked}
+                        disabled={yishiLoading}
                         className="flex-1 min-h-0 overflow-y-auto"
                         jingZheLevel={game.hais.jing_zhe ?? 0}
                         onJingZheMisclick={handleJingZheMisclick}
@@ -1265,6 +1342,9 @@ export default function App() {
             if (!skeleton) return
             const data = loadSaveData(s)
             if (!data) return
+            setCachedNarrative({})
+            setCachedAiChoices({})
+            setStreamBody(null)
             setGame(restoreGameState(skeleton, data))
             setActiveSaveSlot(s)
             narrativeCtxRef.current.clear()

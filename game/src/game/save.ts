@@ -4,6 +4,7 @@ import { DEFAULT_STATS, normalizeHais } from './types'
 import { itemFromId, clueFromId } from './catalog'
 import { createYishiEntry } from './aiOutput'
 import type { StoryOutline } from './storyRuntime'
+import type { RealmSeed } from './designSeed'
 import type { WorldStateGraph } from './worldStateGraph'
 import { createEmptyWorldGraph, graphFromJSON } from './worldStateGraph'
 
@@ -53,6 +54,8 @@ export interface SaveDataV3 extends SaveDataV2 {
   worldGraph?: WorldStateGraph
   /** Carried for next Planner call when generation >= 2 */
   lastPlaythroughSummary?: string
+  /** Dynamic mode anchor source (beat plot_guide enrichment); optional for older saves */
+  dynamicRealmSeed?: RealmSeed | null
 }
 
 export type SaveData = SaveDataV3
@@ -106,6 +109,10 @@ function migrateLegacy(raw: unknown): SaveDataV3 | null {
     base.worldGraph = d.worldGraph ? graphFromJSON(d.worldGraph) : createEmptyWorldGraph()
     base.lastPlaythroughSummary =
       typeof d.lastPlaythroughSummary === 'string' ? d.lastPlaythroughSummary : ''
+    base.dynamicRealmSeed =
+      d.dynamicRealmSeed && typeof d.dynamicRealmSeed === 'object'
+        ? (d.dynamicRealmSeed as RealmSeed)
+        : null
   } else {
     base.engineMode = 'skeleton'
     base.storyOutline = null
@@ -114,6 +121,7 @@ function migrateLegacy(raw: unknown): SaveDataV3 | null {
     base.playthroughGeneration = 0
     base.worldGraph = createEmptyWorldGraph()
     base.lastPlaythroughSummary = ''
+    base.dynamicRealmSeed = null
   }
   return base
 }
@@ -140,6 +148,9 @@ export function saveGameState(game: GameState, slot = 0): void {
       playthroughGeneration: game.playthroughGeneration,
       worldGraph: game.worldGraph,
       lastPlaythroughSummary: game.lastPlaythroughSummary,
+      dynamicRealmSeed: game.dynamicRealmSeed
+        ? (JSON.parse(JSON.stringify(game.dynamicRealmSeed)) as RealmSeed)
+        : null,
     }
     localStorage.setItem(slotKey(s), JSON.stringify(data))
     try {
@@ -265,6 +276,10 @@ export function restoreGameState(skeleton: Skeleton, data: SaveData): GameState 
   game.worldGraph = v3.worldGraph ? graphFromJSON(v3.worldGraph) : createEmptyWorldGraph()
   game.lastPlaythroughSummary =
     typeof v3.lastPlaythroughSummary === 'string' ? v3.lastPlaythroughSummary : ''
+  game.dynamicRealmSeed =
+    v3.dynamicRealmSeed && typeof v3.dynamicRealmSeed === 'object'
+      ? (JSON.parse(JSON.stringify(v3.dynamicRealmSeed)) as RealmSeed)
+      : null
 
   const realm = data.realmId ? skeleton.realms.find((r) => r.id === data.realmId) : null
   if (!realm) {

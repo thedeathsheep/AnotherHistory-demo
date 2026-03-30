@@ -7,6 +7,7 @@
 import type { Skeleton } from './types'
 
 export type AnchorPosition = 'early' | 'mid' | 'late' | 'climax'
+export type RealmSeedMode = 'skeleton' | 'dynamic'
 
 export interface AnchorPoint {
   id: string
@@ -19,6 +20,8 @@ export interface AnchorPoint {
 export interface RealmSeed {
   id: string
   name: string
+  /** Override runtime behavior: skeleton keeps authored node graph; dynamic enables Planner/Director beats. */
+  mode?: RealmSeedMode
   theme: string
   anchors: AnchorPoint[]
   tension_curve?: string

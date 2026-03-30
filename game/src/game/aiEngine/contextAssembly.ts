@@ -2,7 +2,7 @@
  * Layered context assembly (L0–L5) for AI Engine v2 prompts.
  */
 
-import type { DesignSeed } from '@/game/designSeed'
+import type { DesignSeed, RealmSeed } from '@/game/designSeed'
 import type { NodeDirective, StoryOutline } from '@/game/storyRuntime'
 /** Minimal surface for prompt summaries (WorldStateGraphManager or test double). */
 export interface WorldGraphPromptSource {
@@ -20,6 +20,8 @@ export interface LayeredContextInput {
   /** L4: compact player line (stats, items — caller builds) */
   playerStateLine?: string
   directive: NodeDirective | null
+  /** Current realm seed: resolve beat anchor_ref → must_include for L1 focus */
+  realmSeed?: RealmSeed | null
 }
 
 export interface LayeredContext {
@@ -35,17 +37,22 @@ function seedWorldLine(seed: DesignSeed | null): string {
   if (!seed?.world) return '（无种子）'
   const w = seed.world
   const tones = (w.tone ?? []).join('、')
-  const rules = (seed.narrative_rules ?? []).join(' ')
-  return `【世界】${w.name}；${w.era}；基调：${tones}；主题：${w.core_theme}。${rules}`.trim()
+  const rulesArr = seed.narrative_rules ?? []
+  const rulesBlock =
+    rulesArr.length > 0 ? `\n【行文铁律】（须与叙事引擎尾规则一致；禁止空转与堆砌）${rulesArr.join(' ')}` : ''
+  return `【世界】${w.name}；${w.era}；基调：${tones}；主题：${w.core_theme}。${rulesBlock}`.trim()
 }
 
-function outlineLine(outline: StoryOutline | null, beatIndex: number | null): string {
+function outlineLine(outline: StoryOutline | null, beatIndex: number | null, realmSeed: RealmSeed | null | undefined): string {
   if (!outline?.beats?.length) return '（无大纲）'
   const parts = outline.beats.map((b, i) => `${i}:${b.type} ${b.summary}`)
   let focus = ''
   if (beatIndex != null && outline.beats[beatIndex]) {
     const b = outline.beats[beatIndex]
-    focus = `【当前拍】#${beatIndex} ${b.beat_id}：${b.summary}（张力≈${b.tension}）`
+    const anchor = b.anchor_ref ? realmSeed?.anchors?.find((a) => a.id === b.anchor_ref) : undefined
+    const must =
+      anchor?.must_include?.length ? `；锚点须含：${anchor.must_include.join('、')}` : ''
+    focus = `【当前拍】#${beatIndex} ${b.beat_id}：${b.summary}（张力≈${b.tension}）${must}`
   }
   return `【故事大纲】${parts.join(' | ')}\n${focus}`.trim()
 }
@@ -72,7 +79,7 @@ export function buildLayeredContext(input: LayeredContextInput): LayeredContext 
   const l3 = input.worldGraph?.entitySummary() ?? '（无）'
   return {
     l0_world: seedWorldLine(input.designSeed),
-    l1_outline: outlineLine(input.outline, input.beatIndex),
+    l1_outline: outlineLine(input.outline, input.beatIndex, input.realmSeed ?? null),
     l2_events: `【已发生】${l2}`,
     l3_entities: `【实体】${l3}`,
     l4_player: input.playerStateLine?.trim() || '（无）',

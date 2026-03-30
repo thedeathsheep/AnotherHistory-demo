@@ -89,6 +89,15 @@
 - **与策划内容的交互**：门禁、`violatesTaboo`、选项后果（state、next、conclusion）由骨架与状态机控制。
 - **Engine v2（即时生成 + 降级）**：`public/data/design-seed.json` 供 `runPlanner` 生成 `StoryOutline`；每拍 `runDirector` 产出 `NodeDirective`；`contextAssembly` 分层语境（L0–L5）；`generateDynamicBeatNarrative` / `generateDynamicBeatChoices` 驱动 `dyn:{realm}:{beat}` 节点；`WorldStateGraph` 写入 `GameState.worldGraph` 并随存档 **SaveData v3** 持久化。Planner/API 失败时保持 **骨架遍历**（`engineMode: skeleton`）。
 
+**境遇正文（玩家读到的具体句子）从哪里来？**
+
+| 节点类型 | 正文来源 | 是否会在 `prologue.json` 里出现那句原文？ |
+|----------|----------|-------------------------------------------|
+| **骨架节点**（非 `dyn:`，有 `plot_guide` 等） | 运行时调用 `generateNodeNarrative`，模型在 **骨架 `description` / `story_beat` / plot_guide** 约束下重写；无 Key 时用 JSON 里的 `description`。 | **可能**：流水线生成的 `description` 会写进 JSON；AI 当场写的成稿**不一定**与文件里旧稿一致。 |
+| **动态拍**（`dyn:界id:拍号`，Engine v2） | **完全由当时那次 API 调用生成**：输入为 `design-seed`、`StoryOutline` 当前拍摘要、锚点 `must_include`、`runDirector` 的 directive、世界图摘要、玩家状态行等（见 `contextAssembly` + `buildDynamicBeatNarrative`）。 | **一般不会**：像「旁边躺着一只干涸的墨水瓶…」这类细描写是模型即时发挥，**本地文件只约束导向词/禁忌/拍摘要，不写这句全文**。成稿会写回运行时节点并可能进存档，但**不等于**仓库里预先存在该句。 |
+
+若要「每一句都在自己掌控的文档里」，需要：**关掉 v2 只走骨架**，或把该界做成纯骨架节点并主要依赖 `prologue.json` / `skeleton.json` 的 `description`，而不是 `dyn:` 动态拍。
+
 ### 4.4 State Manager（状态管理）
 
 - **三相**：命烛、根脚、鉴照。**UI 仅显示档位（旺盛/摇曳/熄灭 等），不显式展现百分比**。

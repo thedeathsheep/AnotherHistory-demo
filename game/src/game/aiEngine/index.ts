@@ -6,11 +6,12 @@
 import type { Node, Choice, HaiId, Item, Clue, RealmNpc } from '@/game/types'
 import { normalizeHais } from '@/game/types'
 import { violatesTaboo, statLabel } from '@/game/state'
-import { chat, chatStream } from './chat'
+import { chat, chatStream, AI_DEBUG } from './chat'
 import { buildContext, type StateFilter } from './dataAcquisition'
 import {
   buildNarrativeUserPrompt,
   NARRATIVE_SYSTEM,
+  NARRATIVE_TAIL_RULES,
   narrativeMatchesPlotGuide,
   buildDynamicNarrativeUserPrompt,
 } from './prompts/narrative'
@@ -117,23 +118,14 @@ export async function generateNodeNarrative(
 
   let result = await run('', true)
   let text = result?.trim() ?? ''
-  if (text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
-    const retry = await run(
-      '【重试】上一稿未体现核心剧情导向中的关键词。请改写，并至少自然融入其中一个导向词或禁忌相关物象（仍保持 1–2 句具体叙事）。',
-      false
-    )
-    if (retry?.trim()) text = retry.trim()
+  // NOTE: Do not auto-retry here — retries cause visible “same node rewrites twice”.
+  // Keep post-checks as DEV warnings only.
+  if (AI_DEBUG && text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
+    console.warn('[AI] generateNodeNarrative: missing plot_guide keyword; no retry')
   }
   const taboos = node.taboo ?? []
-  if (text && taboos.length && violatesTaboo(text, taboos)) {
-    const list = taboos.map((t) => t.trim()).filter(Boolean).join('、')
-    const retryTaboo = await run(
-      list
-        ? `【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，禁止直接写出或明显指涉以下禁忌词：${list}。若本节点有核心剧情导向，仍须至少融入其中一个导向词。`
-        : '【重试】上一稿正文中出现了禁忌相关用语。请改写为 1–2 句具体叙事，避开节点禁忌。',
-      false
-    )
-    if (retryTaboo?.trim()) text = retryTaboo.trim()
+  if (AI_DEBUG && text && taboos.length && violatesTaboo(text, taboos)) {
+    console.warn('[AI] generateNodeNarrative: taboo violated; no retry')
   }
   return text || null
 }
@@ -243,6 +235,8 @@ export interface GenerateDynamicNarrativeOptions {
   hais?: Record<HaiId, number>
   onStreamChunk?: (fullSoFar: string) => void
   streamSignal?: AbortSignal
+  /** Beat summary as 情节点 line (skeleton parity) */
+  storyBeat?: string
 }
 
 /**
@@ -266,11 +260,21 @@ export async function generateDynamicBeatNarrative(
   }
   const haisFull = normalizeHais(options?.hais)
 
+  const dynamicSystem = `${NARRATIVE_SYSTEM}\n\n【叙事行文硬律】\n${NARRATIVE_TAIL_RULES}`
+
   const messagesFor = (extra: string): { role: string; content: string }[] => {
-    let user = buildDynamicNarrativeUserPrompt(block, statLabels, haisFull, plotGuide, taboo, objective)
+    let user = buildDynamicNarrativeUserPrompt(
+      block,
+      statLabels,
+      haisFull,
+      plotGuide,
+      taboo,
+      objective,
+      options?.storyBeat
+    )
     if (extra) user += `\n\n${extra}`
     return [
-      { role: 'system', content: NARRATIVE_SYSTEM },
+      { role: 'system', content: dynamicSystem },
       { role: 'user', content: user },
     ]
   }
@@ -295,22 +299,13 @@ export async function generateDynamicBeatNarrative(
 
   let result = await run('', true)
   let text = result?.trim() ?? ''
-  if (text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
-    const retry = await run(
-      '【重试】上一稿未体现核心剧情导向中的关键词。请改写，并至少自然融入其中一个导向词（仍保持 1–2 句具体叙事）。',
-      false
-    )
-    if (retry?.trim()) text = retry.trim()
+  // NOTE: Do not auto-retry here — retries cause visible “same node rewrites twice”.
+  // Keep post-checks as DEV warnings only.
+  if (AI_DEBUG && text && plotGuide.length && !narrativeMatchesPlotGuide(text, plotGuide)) {
+    console.warn('[AI] generateDynamicBeatNarrative: missing plot_guide keyword; no retry')
   }
-  if (text && taboo.length && violatesTaboo(text, taboo)) {
-    const list = taboo.map((t) => t.trim()).filter(Boolean).join('、')
-    const retryTaboo = await run(
-      list
-        ? `【重试】正文中出现了禁忌相关用语。请改写，禁止直接写出或明显指涉：${list}。`
-        : '【重试】正文中出现了禁忌相关用语。请改写。',
-      false
-    )
-    if (retryTaboo?.trim()) text = retryTaboo.trim()
+  if (AI_DEBUG && text && taboo.length && violatesTaboo(text, taboo)) {
+    console.warn('[AI] generateDynamicBeatNarrative: taboo violated; no retry')
   }
   return text || null
 }

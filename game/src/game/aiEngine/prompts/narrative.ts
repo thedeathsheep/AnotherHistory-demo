@@ -421,7 +421,8 @@ function buildStateEffects(statLabels: AIContext['statLabels']): string[] {
   return hints
 }
 
-const NARRATIVE_TAIL_RULES = `核心：叙事为游戏服务，**极简但要有画面**：**写满 3–5 句**（可短句），点明处境与氛围；**所有描述必须具体**——只写具体动作、物象、身体反应；每段须有可感知的情节点或与前后衔接。
+/** Dynamic + skeleton tail rules; also prepended in dynamic user prompt so long context does not bury them. */
+export const NARRATIVE_TAIL_RULES = `核心：叙事为游戏服务，**极简但要有画面**：**写满 3–5 句**（可短句），点明处境与氛围；**所有描述必须具体**——只写具体动作、物象、身体反应；每段须有可感知的情节点或与前后衔接。
 
 **禁止清单（只守三条原则）**：
 1. 不用抽象主语：禁止以思绪、心、意识、灵魂等作主语空转；须落到人或身体在做什么、眼前何物。
@@ -466,10 +467,14 @@ export function buildDynamicNarrativeUserPrompt(
   hais: Record<HaiId, number>,
   plotGuide: string[],
   taboo: string[],
-  objective?: string
+  objective?: string,
+  storyBeat?: string
 ): string {
   const sections: string[] = [
     layeredBlock,
+    storyBeat?.trim()
+      ? `【情节点】将以下情节点展开为 3–5 句具体叙事（只写动作/物象/身体反应）：${storyBeat.trim()}`
+      : '',
     plotGuide.length ? `【核心剧情导向】${JSON.stringify(plotGuide)}` : '',
     taboo.length ? `【禁忌】描述中不可让角色触犯：${JSON.stringify(taboo)}` : '',
     objective ? `【目标】${objective}` : '',
@@ -478,11 +483,9 @@ export function buildDynamicNarrativeUserPrompt(
     ...buildHaiEffects(hais),
   ].filter(Boolean)
 
-  return `你扮演《行旅》的叙事引擎。根据以下分层语境写 **3–5 句**叙事（可短句），点明当前处境与氛围，然后交给选项。
+  return `你扮演《行旅》的叙事引擎。须**严格**遵守 system 消息中的【叙事行文硬律】；根据以下分层语境与状态写 **3–5 句**叙事（可短句），点明当前处境与氛围，然后交给选项。
 
-${sections.join('\n')}
-
-${NARRATIVE_TAIL_RULES}`
+${sections.join('\n')}`
 }
 
 export const NARRATIVE_SYSTEM =

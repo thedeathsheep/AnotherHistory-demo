@@ -22,6 +22,7 @@ export async function tryBeginDynamicStory(
   const seed = await loadDesignSeed(g.skeleton)
   const rs = realmSeedById(seed, g.realmId)
   if (!seed || !rs) return { outcome: 'skipped' }
+  if (rs.mode === 'skeleton') return { outcome: 'skipped' }
   const hint =
     g.playthroughGeneration >= 2
       ? (g.lastPlaythroughSummary || g.getChoiceSummaryForYishi()).trim() || undefined

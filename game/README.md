@@ -125,6 +125,18 @@ npm run generate:prologue
 
 **交互 → 换界**：多 realm 已加载时可用。结案后叙事区可提供 **「前往下一界」**（按 `manifest` 合并后的 realm 顺序）。
 
+### 为什么好像有好几份 `prologue.json`？
+
+只有 **一份策划该管的源文件**：`public/data/prologue.json`。其它路径容易在资源管理器里和它对上号，但角色不同：
+
+| 路径 | 是否在 git 中 | 要不要手改 |
+|------|----------------|------------|
+| **`game/public/data/prologue.json`** | 通常 **是** | **要改就改这里**，或跑 `npm run generate:prologue` / `generate:all` 覆盖 |
+| **`game/dist/data/prologue.json`** | **否**（`npm run build` 产物） | **不要改**；由 Vite 从 `public/data` 拷进 `dist`，改 `public` 后重新 build 即可 |
+| **`game/generated/chapters/prologue/merged.json`** | **否**（目录已在 `game/.gitignore`） | 流水线中间结果；成功跑完 `generate` 后会写回 **`public/data/prologue.json`** |
+
+`manifest.json` 里同时出现 `prologue` 与 `skeleton` 表示加载 **两个不同文件**：`prologue.json` = 序章一界，`skeleton.json` = 多界打包（例如折戟原），**不是把同一份序章存了三遍**。
+
 ## 可选环境变量（模型与调试）
 
 | 变量 | 作用 | 默认 |

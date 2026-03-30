@@ -89,6 +89,8 @@ export class GameState {
   worldGraph: WorldStateGraph
   /** Snapshot for Planner when playthroughGeneration >= 2 (filled in startRealm before graph reset). */
   lastPlaythroughSummary: string
+  /** RealmSeed used when dynamic mode started; anchors enrich beat plot_guide on jump. */
+  dynamicRealmSeed: RealmSeed | null
 
   constructor(skeleton: Skeleton) {
     this.skeleton = skeleton
@@ -108,6 +110,7 @@ export class GameState {
     this.playthroughGeneration = 0
     this.worldGraph = createEmptyWorldGraph()
     this.lastPlaythroughSummary = ''
+    this.dynamicRealmSeed = null
   }
 
   clearDynamicStory(): void {
@@ -115,6 +118,7 @@ export class GameState {
     this.storyOutline = null
     this.currentBeatIndex = null
     this.runtimeNodes = {}
+    this.dynamicRealmSeed = null
   }
 
   /** After startRealm; outline.realm_id must match current realm. Registers stub node so getCurrentNode is non-null. */
@@ -126,6 +130,7 @@ export class GameState {
     this.currentNodeId = dynamicNodeId(this.realmId, 0)
     this.runtimeNodes = {}
     this.worldGraph = createEmptyWorldGraph()
+    this.dynamicRealmSeed = realmSeed ?? null
     const b0 = outline.beats[0]
     const plotGuide: string[] = [b0?.summary ?? '开篇']
     const anchor = realmSeed?.anchors?.find((a) => a.id === b0?.anchor_ref)
@@ -135,6 +140,7 @@ export class GameState {
       node_id: this.currentNodeId,
       description: '',
       plot_guide: plotGuide,
+      story_beat: b0?.summary?.trim() || undefined,
       taboo,
       choices: [],
     })
@@ -282,10 +288,15 @@ export class GameState {
         const prevId = beatJump > 0 ? dynamicNodeId(this.realmId, beatJump - 1) : null
         const prevNode = prevId ? this.runtimeNodes[prevId] : null
         const taboo = prevNode?.taboo?.length ? [...prevNode.taboo] : []
+        const plotGuide: string[] = [beat.summary]
+        const rs = this.dynamicRealmSeed
+        const anchor = rs?.anchors?.find((a) => a.id === beat.anchor_ref)
+        if (anchor?.must_include?.length) plotGuide.push(...anchor.must_include)
         this.registerRuntimeNode({
           node_id: this.currentNodeId,
           description: '',
-          plot_guide: [beat.summary],
+          plot_guide: plotGuide,
+          story_beat: beat.summary?.trim() || undefined,
           taboo,
           choices: [],
         })

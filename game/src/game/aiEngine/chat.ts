@@ -265,7 +265,10 @@ export async function chatStream(
     clearTimeout(timeoutId)
     const ms = Date.now() - start
     log(label, `stream done in ${ms}ms, len=${full.length}`)
-    return full.trim() || null
+    const trimmed = full.trim()
+    // Keep last streamed frame aligned with return value (avoids UI jump trim vs cache)
+    if (trimmed && trimmed !== full) onChunk(trimmed)
+    return trimmed || null
   } catch (e) {
     clearTimeout(timeoutId)
     if (outerSignal) outerSignal.removeEventListener('abort', onAbort)
