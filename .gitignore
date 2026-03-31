@@ -1,2 +1,4 @@
 # Local Cursor debug logs (do not commit)
 .cursor/debug*.log
+api_key.txt
+.worktrees/

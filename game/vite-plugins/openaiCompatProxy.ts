@@ -7,7 +7,10 @@
 
 import type { Connect, Plugin } from 'vite'
 import httpProxy from 'http-proxy'
+import { HttpProxyAgent } from 'http-proxy-agent'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { OPENAI_COMPAT_PROXY_PREFIX } from '../src/openaiProxyConstants'
+import { getProxyUrlForTarget } from '../src/proxyEnv'
 
 const HEADER = 'x-openai-compat-base'
 
@@ -15,6 +18,14 @@ const proxy = httpProxy.createProxyServer({
   changeOrigin: true,
   secure: true,
 })
+
+function getProxyAgentForTarget(dest: URL) {
+  const proxyUrl = getProxyUrlForTarget(dest)
+  if (!proxyUrl) return undefined
+  return dest.protocol === 'https:'
+    ? new HttpsProxyAgent(proxyUrl)
+    : new HttpProxyAgent(proxyUrl)
+}
 
 proxy.on('error', (err, _req, res) => {
   const r = res as { headersSent?: boolean; writeHead?: (c: number) => void; end?: (m?: string) => void }
@@ -74,14 +85,23 @@ function middleware(): Connect.NextHandleFunction {
 
     req.url = dest.pathname + (dest.search || '')
 
-    proxy.web(req, res, { target: `${dest.protocol}//${dest.host}` }, (err) => {
+    proxy.web(
+      req,
+      res,
+      {
+        target: `${dest.protocol}//${dest.host}`,
+        agent: getProxyAgentForTarget(dest),
+        secure: dest.protocol === 'https:',
+      },
+      (err) => {
       if (err && !res.headersSent) {
         res.statusCode = 502
         res.end(err.message)
       } else if (err) {
         next(err)
       }
-    })
+      }
+    )
   }
 }
 

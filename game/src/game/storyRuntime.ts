@@ -2,6 +2,7 @@
  * Runtime story structures for AI Engine v2 (outline, beats, director directive).
  */
 
+import type { RealmSeed } from './designSeed'
 import type { Node, NodeGate, StatKey } from './types'
 import { MING_ZHU, GEN_JIAO, JIAN_ZHAO } from './types'
 
@@ -66,6 +67,41 @@ export function directorGateHintToNodeGatePatch(h?: DirectorGateHint | null): Pi
   if (Object.keys(stat_min).length) gate.stat_min = stat_min
   if (gate.item == null && gate.clue == null && !gate.stat_min) return {}
   return { gate }
+}
+
+export interface BuildDynamicBeatRuntimeNodeParams {
+  realmId: string
+  beatIndex: number
+  outline: StoryOutline | null | undefined
+  previousNode?: Node | null
+  realmSeed?: RealmSeed | null
+  gateHint?: DirectorGateHint | null
+}
+
+export function buildDynamicBeatRuntimeNode(params: BuildDynamicBeatRuntimeNodeParams): Node | null {
+  const { realmId, beatIndex, outline, previousNode, realmSeed, gateHint } = params
+  const beat = outline?.beats[beatIndex]
+  if (!realmId || !beat) return null
+
+  const plotGuide: string[] = [beat.summary?.trim() || 'Opening beat']
+  const anchor = realmSeed?.anchors?.find((a) => a.id === beat.anchor_ref)
+  if (anchor?.must_include?.length) plotGuide.push(...anchor.must_include)
+
+  const taboo = previousNode?.taboo?.length
+    ? [...previousNode.taboo]
+    : beatIndex === 0 && realmSeed?.forbidden?.length
+      ? [...realmSeed.forbidden]
+      : []
+
+  return {
+    node_id: dynamicNodeId(realmId, beatIndex),
+    description: '',
+    plot_guide: plotGuide,
+    story_beat: beat.summary?.trim() || undefined,
+    taboo,
+    choices: [],
+    ...directorGateHintToNodeGatePatch(gateHint),
+  }
 }
 
 /** Prefix for dynamic beat navigation in Choice.next */

@@ -38,7 +38,9 @@ function getOpenAiBaseStoredOrDefaultNormalized(): string {
 }
 
 function useBrowserViteCompatProxy(): boolean {
-  return typeof window !== 'undefined' && !window.electronAPI?.isElectron
+  if (typeof window === 'undefined') return false
+  const protocol = window.location?.protocol
+  return protocol === 'http:' || protocol === 'https:'
 }
 
 export interface OpenAiFetchTarget {

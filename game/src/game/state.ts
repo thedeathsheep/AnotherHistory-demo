@@ -3,7 +3,7 @@ import { DEFAULT_STATS, MING_ZHU, GEN_JIAO, JIAN_ZHAO, HAI_IDS, normalizeHais } 
 import { itemFromId, clueFromId } from './catalog'
 import { createYishiEntry } from './aiOutput'
 import type { StoryOutline } from './storyRuntime'
-import { parseBeatNext, dynamicNodeId } from './storyRuntime'
+import { buildDynamicBeatRuntimeNode, parseBeatNext, dynamicNodeId } from './storyRuntime'
 import type { RealmSeed } from './designSeed'
 import { createEmptyWorldGraph, WorldStateGraphManager, type WorldStateGraph, type GraphEvent } from './worldStateGraph'
 
@@ -131,7 +131,16 @@ export class GameState {
     this.runtimeNodes = {}
     this.worldGraph = createEmptyWorldGraph()
     this.dynamicRealmSeed = realmSeed ?? null
-    const b0 = outline.beats[0]
+    const openingNode = buildDynamicBeatRuntimeNode({
+      realmId: this.realmId,
+      beatIndex: 0,
+      outline,
+      realmSeed,
+    })
+    if (!openingNode) return false
+    this.registerRuntimeNode(openingNode)
+    return true
+    /*
     const plotGuide: string[] = [b0?.summary ?? '开篇']
     const anchor = realmSeed?.anchors?.find((a) => a.id === b0?.anchor_ref)
     if (anchor?.must_include?.length) plotGuide.push(...anchor.must_include)
@@ -145,6 +154,7 @@ export class GameState {
       choices: [],
     })
     return true
+    */
   }
 
   registerRuntimeNode(node: Node): void {
@@ -219,10 +229,14 @@ export class GameState {
 
   getCurrentNode(): Node | null {
     if (!this.currentNodeId) return null
-    const rt = this.runtimeNodes[this.currentNodeId]
+    return this.findNodeById(this.currentNodeId)
+  }
+
+  findNodeById(nodeId: string): Node | null {
+    const rt = this.runtimeNodes[nodeId]
     if (rt) return rt
     for (const realm of this.skeleton.realms) {
-      const node = realm.nodes.find((n) => n.node_id === this.currentNodeId!)
+      const node = realm.nodes.find((n) => n.node_id === nodeId)
       if (node) return node
     }
     return null
@@ -245,6 +259,18 @@ export class GameState {
       }
     }
     return true
+  }
+
+  canTakeChoice(choice: Choice): boolean {
+    const nextId = choice.next?.trim()
+    if (!nextId || nextId === '__结案__') return true
+    const beatJump = parseBeatNext(nextId)
+    if (this.engineMode === 'dynamic' && beatJump !== null && this.realmId) {
+      const target = this.findNodeById(dynamicNodeId(this.realmId, beatJump))
+      return target ? this.canEnterNode(target) : true
+    }
+    const target = this.findNodeById(nextId)
+    return target ? this.canEnterNode(target) : true
   }
 
   applyChoice(choice: Choice): { nextNodeId: string | null; conclusionLabel: string | null } {
@@ -282,24 +308,17 @@ export class GameState {
     if (this.engineMode === 'dynamic' && beatJump !== null && this.realmId) {
       this.currentBeatIndex = beatJump
       this.currentNodeId = dynamicNodeId(this.realmId, beatJump)
-      const outline = this.storyOutline
-      const beat = outline?.beats[beatJump]
-      if (beat && !this.runtimeNodes[this.currentNodeId]) {
+      if (!this.runtimeNodes[this.currentNodeId]) {
         const prevId = beatJump > 0 ? dynamicNodeId(this.realmId, beatJump - 1) : null
         const prevNode = prevId ? this.runtimeNodes[prevId] : null
-        const taboo = prevNode?.taboo?.length ? [...prevNode.taboo] : []
-        const plotGuide: string[] = [beat.summary]
-        const rs = this.dynamicRealmSeed
-        const anchor = rs?.anchors?.find((a) => a.id === beat.anchor_ref)
-        if (anchor?.must_include?.length) plotGuide.push(...anchor.must_include)
-        this.registerRuntimeNode({
-          node_id: this.currentNodeId,
-          description: '',
-          plot_guide: plotGuide,
-          story_beat: beat.summary?.trim() || undefined,
-          taboo,
-          choices: [],
+        const nextNode = buildDynamicBeatRuntimeNode({
+          realmId: this.realmId,
+          beatIndex: beatJump,
+          outline: this.storyOutline,
+          previousNode: prevNode,
+          realmSeed: this.dynamicRealmSeed,
         })
+        if (nextNode) this.registerRuntimeNode(nextNode)
       }
       return { nextNodeId: this.currentNodeId, conclusionLabel: null }
     }

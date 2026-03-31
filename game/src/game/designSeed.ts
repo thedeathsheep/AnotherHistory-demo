@@ -91,6 +91,7 @@ export function mergeDesignSeedWithSkeleton(raw: DesignSeed, skeleton: Skeleton)
     const merged: RealmSeed = {
       id: sr.id,
       name: sr.name,
+      mode: existing?.mode,
       theme: ps.theme ?? existing?.theme ?? '',
       tension_curve: ps.tension_curve ?? existing?.tension_curve,
       estimated_beats: ps.estimated_beats ?? existing?.estimated_beats,

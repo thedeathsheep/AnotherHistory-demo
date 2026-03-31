@@ -5,12 +5,23 @@
  * Only active under Vite dev / vite preview (not static file / Electron).
  */
 import httpProxy from 'http-proxy';
+import { HttpProxyAgent } from 'http-proxy-agent';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { OPENAI_COMPAT_PROXY_PREFIX } from '../src/openaiProxyConstants';
+import { getProxyUrlForTarget } from '../src/proxyEnv';
 var HEADER = 'x-openai-compat-base';
 var proxy = httpProxy.createProxyServer({
     changeOrigin: true,
     secure: true,
 });
+function getProxyAgentForTarget(dest) {
+    var proxyUrl = getProxyUrlForTarget(dest);
+    if (!proxyUrl)
+        return undefined;
+    return dest.protocol === 'https:'
+        ? new HttpsProxyAgent(proxyUrl)
+        : new HttpProxyAgent(proxyUrl);
+}
 proxy.on('error', function (err, _req, res) {
     var _a, _b;
     var r = res;
@@ -67,7 +78,11 @@ function middleware() {
             return;
         }
         req.url = dest.pathname + (dest.search || '');
-        proxy.web(req, res, { target: "".concat(dest.protocol, "//").concat(dest.host) }, function (err) {
+        proxy.web(req, res, {
+            target: "".concat(dest.protocol, "//").concat(dest.host),
+            agent: getProxyAgentForTarget(dest),
+            secure: dest.protocol === 'https:',
+        }, function (err) {
             if (err && !res.headersSent) {
                 res.statusCode = 502;
                 res.end(err.message);

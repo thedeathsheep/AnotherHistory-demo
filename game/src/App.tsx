@@ -22,7 +22,7 @@ import {
 } from '@/game/save'
 import { isAiEngineV2Enabled } from '@/game/aiEngine/v2Enabled'
 import { tryBeginDynamicStory } from '@/game/aiEngine/beginDynamicStory'
-import { WorldStateGraphManager, graphFromJSON } from '@/game/worldStateGraph'
+import { WorldStateGraphManager } from '@/game/worldStateGraph'
 import { evaluateEnding, getEnding } from '@/game/endings'
 import type { Skeleton, Node, Choice } from '@/game/types'
 import {
@@ -37,7 +37,12 @@ import {
   type LayeredContextInput,
 } from '@/game/aiBridge'
 import { loadDesignSeed } from '@/game/designSeed'
-import { beatNextToken, directorGateHintToNodeGatePatch, type NodeDirective } from '@/game/storyRuntime'
+import {
+  beatNextToken,
+  buildDynamicBeatRuntimeNode,
+  dynamicNodeId,
+  type NodeDirective,
+} from '@/game/storyRuntime'
 import {
   getApiKey,
   rememberAiSettings,
@@ -46,6 +51,7 @@ import {
   normalizeOpenAiBaseUrl,
   getGateFormDefaults,
 } from '@/config'
+import { resolveNewGameCarryover } from '@/game/newGameCarryover'
 import { PLANNER_LOADING_HINT } from '@/plannerUi'
 import { NarrativeBox } from '@/components/NarrativeBox'
 import { Tooltip } from '@/components/Tooltip'
@@ -387,16 +393,35 @@ export default function App() {
         })
         if (cancelled) return
         const body = text?.trim() || node.description?.trim() || '（叙事加载失败）'
-        const gatePatch = directorGateHintToNodeGatePatch(dir?.gate_hint)
         const latest = game.getCurrentNode()
         const base = latest?.node_id === nid ? latest : node
         game.registerRuntimeNode({
           ...base,
-          ...gatePatch,
           description: body,
           plot_guide: plotGuide.length ? plotGuide : ['境遇'],
           taboo,
+          gate: undefined,
         })
+        if (game.realmId && outline.beats[beatIndex + 1]) {
+          const nextId = dynamicNodeId(game.realmId, beatIndex + 1)
+          const existingNext = game.runtimeNodes[nextId]
+          const nextNode = buildDynamicBeatRuntimeNode({
+            realmId: game.realmId,
+            beatIndex: beatIndex + 1,
+            outline,
+            previousNode: base,
+            realmSeed: game.dynamicRealmSeed,
+            gateHint: dir?.gate_hint,
+          })
+          if (nextNode) {
+            game.registerRuntimeNode({
+              ...(existingNext ?? nextNode),
+              ...nextNode,
+              description: existingNext?.description ?? nextNode.description,
+              choices: existingNext?.choices ?? nextNode.choices,
+            })
+          }
+        }
         setCachedNarrative((prev) => ({ ...prev, [nid]: body }))
       } catch {
         if (!cancelled) {
@@ -586,26 +611,16 @@ export default function App() {
 
   const handleStartNewGame = () => {
     if (!skeleton) return
-    let carryGen = 0
-    let carrySummary = ''
     const slotToRead = findFirstOccupiedSlot()
     const prevData = loadSaveData(slotToRead)
-    if (prevData) {
-      carryGen = prevData.playthroughGeneration ?? 0
-      const wg = prevData.worldGraph
-      if (wg && Array.isArray(wg.events) && wg.events.length > 0) {
-        carrySummary = new WorldStateGraphManager(graphFromJSON(wg)).summaryForPrompt(0, 600)
-      } else if (typeof prevData.lastPlaythroughSummary === 'string' && prevData.lastPlaythroughSummary.trim()) {
-        carrySummary = prevData.lastPlaythroughSummary.trim()
-      }
-    }
+    const carryover = resolveNewGameCarryover(null, prevData)
     clearSave()
     narrativeCtxRef.current.clear()
     directiveRef.current = null
     setStreamBody(null)
     const g = new GameState(skeleton)
-    g.playthroughGeneration = carryGen
-    g.lastPlaythroughSummary = carrySummary
+    g.playthroughGeneration = carryover.playthroughGeneration
+    g.lastPlaythroughSummary = carryover.lastPlaythroughSummary
     g.startRealm()
     setCachedNarrative({})
     setCachedAiChoices({})
@@ -872,6 +887,15 @@ export default function App() {
 
   const handleChoice = async (choice: Choice) => {
     if (!node || !choice) return
+    if (!game.canTakeChoice(choice)) {
+      if (acquireTimerRef.current) clearTimeout(acquireTimerRef.current)
+      setAcquireBanner('当前条件不足，暂时无法前往此境')
+      acquireTimerRef.current = setTimeout(() => {
+        setAcquireBanner(null)
+        acquireTimerRef.current = null
+      }, 4500)
+      return
+    }
     const taboos = node.taboo ?? []
     const coreFacts = [
       ...(node.plot_guide ?? []).slice(0, 3),
@@ -1361,26 +1385,14 @@ export default function App() {
           }}
           onNewGameAll={() => {
             if (!skeleton) return
-            let carryGen = 0
-            let carrySummary = ''
-            const slotToRead = findFirstOccupiedSlot()
-            const prevData = loadSaveData(slotToRead)
-            if (prevData) {
-              carryGen = prevData.playthroughGeneration ?? 0
-              const wg = prevData.worldGraph
-              if (wg && Array.isArray(wg.events) && wg.events.length > 0) {
-                carrySummary = new WorldStateGraphManager(graphFromJSON(wg)).summaryForPrompt(0, 600)
-              } else if (typeof prevData.lastPlaythroughSummary === 'string' && prevData.lastPlaythroughSummary.trim()) {
-                carrySummary = prevData.lastPlaythroughSummary.trim()
-              }
-            }
+            const carryover = resolveNewGameCarryover(game, loadSaveData(activeSaveSlot))
             clearSave()
             narrativeCtxRef.current.clear()
             directiveRef.current = null
             setStreamBody(null)
             const g = new GameState(skeleton)
-            g.playthroughGeneration = carryGen
-            g.lastPlaythroughSummary = carrySummary
+            g.playthroughGeneration = carryover.playthroughGeneration
+            g.lastPlaythroughSummary = carryover.lastPlaythroughSummary
             g.startRealm()
             setCachedNarrative({})
             setCachedAiChoices({})
