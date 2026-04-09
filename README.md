@@ -27,3 +27,10 @@ npm run dev
 ## 版本
 
 应用版本以 **`game/package.json`** 的 `version` 为准（构建时注入界面与 Electron 窗口标题）。
+
+## AI 叙事引擎现状（摘要）
+
+- **核心理念**：骨架（`public/data/*.json`）主要提供 **剧情导向/禁忌/目标/门禁/后果**；运行时由 AI 生成「境遇正文」与「感应选项文案」。
+- **生成顺序（骨架节点）**：Conductor（计划）→ Writer（正文）→ ChoiceEngine（选项），并在必要时生成短区间 `rt:` 运行时微分支（多入口、多步、可回流）。
+- **入口代码**：`game/src/App.tsx`（触发与缓存）、`game/src/game/aiEngine/`（chat/prompts/agents）。
+- **更多说明**：见 [`TechnicalFrame.md`](TechnicalFrame.md) 与 [`game/README.md`](game/README.md) 的 AI 部分。

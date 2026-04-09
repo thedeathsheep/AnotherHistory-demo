@@ -83,11 +83,15 @@
 > 完整设计见 **GDD 5.5**。当前仓库已落地分层实现（非雏形）：`game/src/game/aiEngine/`（`chat`、`dataAcquisition`、各场景 `prompts`），`aiBridge.ts` 为对外兼容入口；细则与完成度见根目录 **TODO.md**。
 
 - **数据获取**：从骨架、GameState（三相+害）、物证、线索、卷轴、抉择历史、`NarrativeContextManager` 摘要聚合上下文。
-- **数据修改**：数值与门禁仍以骨架 + `GameState.applyChoice` 为准；AI 主要改**展示层**叙事与补念文案；异史经凝练后写入卷轴条目。
+- **数据修改**：数值与门禁仍以骨架 + `GameState.applyChoice` 为准；AI 主要改**展示层**叙事与选项文案；异史经凝练后写入卷轴条目。
 - **叙事上下文管理**：事实条数/字数上限；灵损只劣化注入模型的摘要；鉴照混浊等进 prompt。
 - **场景化提示词**：主叙事、异史、补念等模板在 `prompts/`；叙事含 plot_guide 校验重试与禁忌重试；补念在叙事成稿后请求并带入【当前境遇正文】。
 - **与策划内容的交互**：门禁、`violatesTaboo`、选项后果（state、next、conclusion）由骨架与状态机控制。
 - **Engine v2（即时生成 + 降级）**：`public/data/design-seed.json` 供 `runPlanner` 生成 `StoryOutline`；每拍 `runDirector` 产出 `NodeDirective`；`contextAssembly` 分层语境（L0–L5）；`generateDynamicBeatNarrative` / `generateDynamicBeatChoices` 驱动 `dyn:{realm}:{beat}` 节点；`WorldStateGraph` 写入 `GameState.worldGraph` 并随存档 **SaveData v3** 持久化。Planner/API 失败时保持 **骨架遍历**（`engineMode: skeleton`）。
+
+#### 4.3.1 叙事层级与生成顺序（已落地）
+
+骨架节点（非 `dyn:`）的运行时生成顺序调整为：\n\n1. **Conductor（叙事管理层）**：调用一次 LLM 输出严格 JSON 的 `GenerationPlan`，包含 `target_choice_count`、`intents_required`、以及可选的 `micro_branch.roots`（多入口 `rt:` 微分支计划）。实现：`game/src/game/aiEngine/agents/conductor.ts`。\n2. **Writer（正文层）**：生成 3–5 句境遇正文（可流式），写入缓存/运行时节点。实现：`generateNodeNarrative` / `generateDynamicBeatNarrative`。\n3. **ChoiceEngine（选项层）**：按 Conductor 计划驱动选项输出条数与意图覆盖；允许同 next 的差异化按钮；必要时注入 `rt:` 入口以提供短区间自由度。实现：`generateChoices`（接收 plan）、`mergeSkeletonChoicesWithAi`。\n\n> `rt:` 节点存储在 `GameState.runtimeNodes`，会随 SaveData v3 持久化；可回流到骨架节点。
 
 **境遇正文（玩家读到的具体句子）从哪里来？**
 
@@ -96,7 +100,7 @@
 | **骨架节点**（非 `dyn:`，有 `plot_guide` 等） | 运行时调用 `generateNodeNarrative`，模型在 **骨架 `description` / `story_beat` / plot_guide** 约束下重写；无 Key 时用 JSON 里的 `description`。 | **可能**：流水线生成的 `description` 会写进 JSON；AI 当场写的成稿**不一定**与文件里旧稿一致。 |
 | **动态拍**（`dyn:界id:拍号`，Engine v2） | **完全由当时那次 API 调用生成**：输入为 `design-seed`、`StoryOutline` 当前拍摘要、锚点 `must_include`、`runDirector` 的 directive、世界图摘要、玩家状态行等（见 `contextAssembly` + `buildDynamicBeatNarrative`）。 | **一般不会**：像「旁边躺着一只干涸的墨水瓶…」这类细描写是模型即时发挥，**本地文件只约束导向词/禁忌/拍摘要，不写这句全文**。成稿会写回运行时节点并可能进存档，但**不等于**仓库里预先存在该句。 |
 
-若要「每一句都在自己掌控的文档里」，需要：**关掉 v2 只走骨架**，或把该界做成纯骨架节点并主要依赖 `prologue.json` / `skeleton.json` 的 `description`，而不是 `dyn:` 动态拍。
+若要「每一句都在自己掌控的文档里」，需要：**关掉 v2 并避免 Conductor/rt 微分支**，只走纯骨架 description；否则正文与部分选项会在运行时生成并进入存档（不必回写仓库文件）。
 
 ### 4.4 State Manager（状态管理）
 

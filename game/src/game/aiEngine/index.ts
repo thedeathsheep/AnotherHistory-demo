@@ -22,6 +22,7 @@ import { ITEM_NARRATIVE_SYSTEM, buildItemNarrativeUserPrompt } from './prompts/i
 import { NPC_DIALOGUE_SYSTEM, buildNpcDialogueUserPrompt } from './prompts/npc'
 import { buildLayeredContext, layeredContextBlock, type LayeredContextInput } from './contextAssembly'
 import { beatNextToken } from '@/game/storyRuntime'
+import type { GenerationPlan, ChoiceIntent } from './agents/conductor'
 
 // Re-export for external use
 export { chat, chatStream, AI_DEBUG, validateOpenAiCompatibleKey } from './chat'
@@ -37,6 +38,7 @@ export {
 export { narrativeMatchesPlotGuide } from './prompts/narrative'
 export { runPlanner } from './agents/planner'
 export { runDirector } from './agents/director'
+export { runConductor, parseGenerationPlan, type GenerationPlan, type ChoiceIntent } from './agents/conductor'
 export { verifyNarrative, type VerifyNarrativeResult } from './agents/verifier'
 export { buildLayeredContext, layeredContextBlock, type LayeredContext, type LayeredContextInput } from './contextAssembly'
 
@@ -182,6 +184,91 @@ export async function generateNpcDialogue(
 export interface AIGeneratedChoice {
   text: string
   next: string
+  intent?: ChoiceIntent | string
+}
+
+function uniqueStrings(xs: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const x of xs) {
+    const t = x.trim()
+    if (!t) continue
+    if (seen.has(t)) continue
+    seen.add(t)
+    out.push(t)
+  }
+  return out
+}
+
+function normalizeIntent(raw: unknown): ChoiceIntent | null {
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  const allowed: ChoiceIntent[] = ['advance', 'inspect', 'seekInfo', 'commitRisk', 'retreat', 'interact', 'wait']
+  return (allowed as string[]).includes(t) ? (t as ChoiceIntent) : null
+}
+
+function pickChoicesByPlan(params: {
+  parsed: AIGeneratedChoice[]
+  validNexts: Set<string>
+  plan: GenerationPlan | null
+  fallbackMax: number
+}): AIGeneratedChoice[] {
+  const { parsed, validNexts, plan, fallbackMax } = params
+  const filtered = parsed
+    .filter((x) => x && typeof x.text === 'string' && typeof x.next === 'string')
+    .map((x) => ({ text: String(x.text).trim(), next: String(x.next).trim(), intent: x.intent }))
+    .filter((x) => x.text.length > 0 && validNexts.has(x.next))
+
+  const target = plan?.target_choice_count ?? fallbackMax
+  const required = plan?.intents_required?.length ? plan.intents_required : []
+  const requiredSet = new Set(required)
+
+  // Greedy: first cover required intents, then fill by distinct next if prefer_divergent_next.
+  const chosen: AIGeneratedChoice[] = []
+  const usedIdx = new Set<number>()
+  const usedNext = new Set<string>()
+  const usedIntent = new Set<string>()
+
+  const norm = filtered.map((c) => ({ ...c, intent: normalizeIntent(c.intent) ?? undefined }))
+
+  for (const intent of required) {
+    const j = norm.findIndex((c, idx) => !usedIdx.has(idx) && c.intent === intent)
+    if (j >= 0) {
+      chosen.push(norm[j]!)
+      usedIdx.add(j)
+      usedNext.add(norm[j]!.next)
+      usedIntent.add(intent)
+    }
+  }
+
+  const preferDivergent = plan?.prefer_divergent_next !== false
+  while (chosen.length < target) {
+    let j = -1
+    // Prefer new intents first (if provided), else prefer new next.
+    j =
+      norm.findIndex((c, idx) => {
+        if (usedIdx.has(idx)) return false
+        if (requiredSet.size && c.intent && !usedIntent.has(c.intent)) return true
+        return false
+      }) ?? -1
+    if (j === -1) {
+      j = norm.findIndex((c, idx) => {
+        if (usedIdx.has(idx)) return false
+        if (preferDivergent && usedNext.has(c.next)) return false
+        return true
+      })
+    }
+    if (j === -1) {
+      j = norm.findIndex((_, idx) => !usedIdx.has(idx))
+    }
+    if (j === -1) break
+    chosen.push(norm[j]!)
+    usedIdx.add(j)
+    usedNext.add(norm[j]!.next)
+    if (norm[j]!.intent) usedIntent.add(norm[j]!.intent as string)
+  }
+
+  return chosen.slice(0, Math.min(5, Math.max(2, target)))
 }
 
 /**
@@ -196,7 +283,8 @@ export async function generateChoices(
   clues: Clue[],
   requireItemThought?: boolean,
   /** 与叙事一体：有 AI 叙事时应为成稿；无则为骨架 description */
-  sceneNarrative?: string
+  sceneNarrative?: string,
+  plan?: GenerationPlan | null
 ): Promise<AIGeneratedChoice[]> {
   if (!node.choices?.length) return []
   const user = buildChoicesUserPrompt({
@@ -209,6 +297,8 @@ export async function generateChoices(
     clues,
     realmName,
     requireItemThought,
+    targetChoiceCount: plan?.target_choice_count,
+    intentsRequired: plan?.intents_required?.length ? uniqueStrings(plan.intents_required) : undefined,
   })
   const result = await chat(apiKey, [{ role: 'system', content: CHOICES_SYSTEM }, { role: 'user', content: user }], {
     maxTokens: 256,
@@ -220,12 +310,14 @@ export async function generateChoices(
     const parsed = JSON.parse(result) as unknown
     const arr = Array.isArray(parsed) ? parsed : [parsed]
     const validNexts = new Set(node.choices.map((c) => c.next).filter(Boolean))
-    return arr
-      .filter((x): x is AIGeneratedChoice => x && typeof x.text === 'string' && typeof x.next === 'string')
-      .filter((x) => validNexts.has(x.next))
-      .slice(0, 2)
-      .map((x) => ({ text: String(x.text).trim(), next: x.next }))
-      .filter((x) => x.text.length > 0)
+    const fallbackMax = Math.min(5, Math.max(2, node.choices.length))
+    const chosen = pickChoicesByPlan({
+      parsed: arr as AIGeneratedChoice[],
+      validNexts,
+      plan: plan ?? null,
+      fallbackMax,
+    })
+    return chosen
   } catch {
     return []
   }

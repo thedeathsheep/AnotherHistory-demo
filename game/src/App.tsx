@@ -32,6 +32,7 @@ import {
   generateDynamicBeatNarrative,
   generateDynamicBeatChoices,
   runDirector,
+  runConductor,
   AI_DEBUG,
   validateOpenAiCompatibleKey,
   type LayeredContextInput,
@@ -458,6 +459,7 @@ export default function App() {
 
     const nodeUseAi = Boolean(apiKey && (isDyn || (node.plot_guide ?? node.truth_anchors)?.length))
     if (nodeUseAi && cachedNarrative[nid] === undefined) return
+    const isRt = nid.startsWith('rt:')
 
     let cancelled = false
     setChoicesLoading(true)
@@ -505,13 +507,76 @@ export default function App() {
     const sceneNarrative = nodeUseAi
       ? cachedNarrative[nid]
       : (node.description?.trim() || node.story_beat || '')
-    generateChoices(apiKey, node, game.realmName, game.items, game.clues, requireItemThought, sceneNarrative)
-      .then((aiChoices) => {
-        if (!cancelled) {
-          const merged = mergeSkeletonChoicesWithAi(node, aiChoices ?? [])
-          setCachedAiChoices((prev) => ({ ...prev, [nid]: merged }))
+    ;(async () => {
+      // Optional: Conductor can decide to add rt: micro-branching entry choices.
+      let augmentedSkeletonChoices: Choice[] | null = null
+      if (!isRt && nodeUseAi) {
+        const allowedNexts = [...new Set((node.choices ?? []).map((c) => c.next).filter(Boolean))]
+        const plan = await runConductor({
+          apiKey,
+          node,
+          realmName: game.realmName,
+          allowedNexts,
+          items: game.items,
+          clues: game.clues,
+          sceneNarrative,
+        }).catch(() => null)
+
+        if (plan?.micro_branch?.enabled) {
+          const rejoin = plan.micro_branch.rejoin_node_id || allowedNexts[0] || ''
+          const taboo = node.taboo ?? []
+          const roots = plan.micro_branch.roots?.length
+            ? plan.micro_branch.roots
+            : [
+                {
+                  entry_text: '顺势深入',
+                  entry_state: undefined,
+                  steps: plan.micro_branch.steps ?? [],
+                },
+              ]
+
+          const injected: Choice[] = []
+          for (const root of roots.slice(0, 4)) {
+            const chain = root.steps ?? []
+            for (let i = 0; i < chain.length; i++) {
+              const step = chain[i]!
+              const nextStep = chain[i + 1]
+              const stepChoices: Choice[] = []
+              if (nextStep?.node_id) stepChoices.push({ text: '继续深入', next: nextStep.node_id })
+              if (rejoin) stepChoices.push({ text: '收手回去', next: rejoin })
+              if (!stepChoices.length) stepChoices.push({ text: '返回', next: rejoin || '__结案__' })
+              game.registerRuntimeNode({
+                node_id: step.node_id,
+                plot_guide: step.plot_guide,
+                taboo,
+                objective: step.objective,
+                description: '',
+                choices: stepChoices,
+              })
+            }
+            const firstRt = chain[0]?.node_id
+            if (firstRt) {
+              injected.push({
+                text: root.entry_text,
+                next: firstRt,
+                state: root.entry_state ? { ...root.entry_state } : undefined,
+              })
+            }
+          }
+          if (injected.length) {
+            augmentedSkeletonChoices = [...(node.choices ?? []), ...injected]
+          }
         }
-      })
+      }
+
+      const aiChoices = await generateChoices(apiKey, node, game.realmName, game.items, game.clues, requireItemThought, sceneNarrative, plan)
+        .catch(() => null)
+
+      if (cancelled) return
+      const mergedSkeleton = mergeSkeletonChoicesWithAi(node, aiChoices ?? [])
+      const merged = augmentedSkeletonChoices ? mergeSkeletonChoicesWithAi({ ...node, choices: augmentedSkeletonChoices }, aiChoices ?? []) : mergedSkeleton
+      setCachedAiChoices((prev) => ({ ...prev, [nid]: merged }))
+    })()
       .finally(() => {
         if (!cancelled) setChoicesLoading(false)
       })

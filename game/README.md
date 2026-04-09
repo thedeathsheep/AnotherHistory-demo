@@ -145,6 +145,23 @@ npm run generate:prologue
 | `VITE_AI_MODEL_*` | 各角色模型，见 `.env.example` | `gpt-4o-mini` 等 |
 | `VITE_AI_DEBUG` | `1` / `true`：控制台 + 页面 AI debug 浮层 | 关 |
 
+## AI 叙事引擎：层级与生成顺序（现状）
+
+### 骨架节点（非 `dyn:`）
+
+- **骨架定位**：`public/data/*.json` 中的节点主要提供 `plot_guide/truth_anchors`、`taboo`、`objective`、`gate`、以及 choice 的 `next/state/...` 等“后果与门禁”。运行时文本（正文与选项文案）可由 AI 生成。
+- **生成顺序**：
+  1. `runConductor` → 输出 `GenerationPlan`（严格 JSON，含 `target_choice_count`、`intents_required`、可选 `micro_branch.roots`）
+  2. `generateNodeNarrative` → 3–5 句正文（可流式）
+  3. `generateChoices`（接收 plan）→ 选项条数与意图覆盖由 plan 驱动；同 next 也要求差异化
+  4. 必要时注入 `rt:` 微分支入口：多入口、多步、可回流到骨架 next；`rt:` 节点写入 `GameState.runtimeNodes` 并随存档持久化
+
+入口代码：`src/App.tsx`（触发与缓存）、`src/game/aiEngine/agents/conductor.ts`、`src/game/aiEngine/index.ts`、`src/game/choiceDisplay.ts`。
+
+### 动态拍（`dyn:`，Engine v2）
+
+维持既有链路：Planner → Director → Writer → Choices。失败则降级为骨架遍历。
+
 ## 目录（摘要）
 
 | 路径 | 说明 |

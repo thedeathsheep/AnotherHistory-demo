@@ -2,7 +2,7 @@
 
 > 基于 GDD.md、TechnicalFrame.md、ProjectManager.md 对比当前实现，产出可执行任务列表。  
 > **AI 引擎**：`aiEngine/` 分层；流水线 PIPE-1～PIPE-9；Electron 重新生成与存档镜像（userData/saves）。  
-> **更新于 2026-03-29**（对齐仓库当前实现；以下「未完成」多为 GDD 全量或策划数据侧）。**文案设定**：叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列；节点衔接见 design/AI功能设定/ai3_texts.md、ai2_nodes.md。
+> **更新于 2026-04-09**（对齐仓库当前实现；以下「未完成」多为 GDD 全量或策划数据侧）。**文案设定**：叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列；节点衔接见 design/AI功能设定/ai3_texts.md、ai2_nodes.md。
 
 ---
 
@@ -11,7 +11,9 @@
 ### 已完成（代码已落地，可持续迭代数据与 prompt）
 
 - **核心循环**：入界 → 境遇正文（骨架 + 可选 AI）→ **正文落定后再显感应** → 抉择 → 结案/中途定稿 → 异史入卷轴；加载副本用「境遇正文凝练中…」，感应未出时用「待正文落定，感应方显。」
-- **AI**：`aiEngine/`（叙事 plot_guide 校验重试、**叙事禁忌重试**、异史 coreFacts、补选项 **在叙事成稿后** 请求并注入 **【当前境遇正文】**）；`aiBridge` 兼容导出；`npm run test:ai` 静态回归（plot + taboo）
+- **AI**：`aiEngine/` 分层（chat / prompts / agents）；叙事 plot_guide 校验与禁忌校验（当前仅 debug 警告，无自动重试）；异史 coreFacts；补选项在叙事成稿后请求并注入 **【当前境遇正文】**；`aiBridge` 兼容导出；`npm run test:ai` 静态回归（plot + taboo）。
+- **Conductor（叙事管理层）**：运行时生成 `GenerationPlan`（严格 JSON），将 `target_choice_count` / `intents_required` 接入 `generateChoices`，并支持 `rt:` 微分支（多入口 roots、多步、回流、可存档）。
+- **选项区分度兜底**：同 next 多按钮可分配不同 AI 文案；并对近似同义文案做回退以减少“两个按钮一个意思”。
 - **状态与害**：三相档位 UI、18×`HaiId`、惊蛰抖动/误触、点破、反噬、避讳联动等（见 M1）
 - **物证/线索**：模型、门禁、Overlay、凭物补念、`catalog`、抉择获得条带提示
 - **多界与收束**：`manifest.json` 多 realm、`enterRealm` 换界、**定稿** `beginMidConclude`、结局矩阵 `evaluateEnding`
@@ -20,10 +22,10 @@
 
 ### 接下来（优先级从高到低，可按轮次摘取）
 
-1. **发布与工程**：Electron **electron-builder** 安装包（M4-5）；主界面/槽位 **polish**（M4-4）
+1. **发布与工程**：Electron **electron-builder** 安装包（M4-5，已具备脚本/配置）；主界面/槽位 **polish**（M4-4）
 2. **体验**：卷轴小屏与侧栏统一（M4-3）；可选 **行旅纪要/抉择回顾** 面板（减上下文焦虑，数据已有 `choiceHistory` / 事实流）
-3. **AI 与内容**：**AI-E16** 物品/NPC 独立模板；流水线把 **skeleton 界** 纳入或与 prologue 同规范生成；结局与害 **与 GDD 逐条对齐**（数据+条件）
-4. **骨架演进**：**D-1** 事件/剧情点层级；**D-3** `hai_trigger` 等扩展字段（可选）
+3. **AI 与内容**：**AI-E16** 物品/NPC 独立模板（当前仅函数/模板，尚未接入流程）；**AI-E22** coreFacts 注入（当前仅 prompt 模板，尚未接线）；流水线把 **skeleton 界** 纳入或与 prologue 同规范生成；结局与害 **与 GDD 逐条对齐**（数据+条件）
+4. **骨架演进**：**D-1** 事件/剧情点层级（已支持结构，待数据接入）；**D-3** `hai_trigger` 等扩展字段（可选）
 5. **暂缓**：SQLite/上云（`databasePolicy.ts`）
 
 ---
@@ -34,9 +36,9 @@
 | 模块          | 完成度         | 说明                                                                       |
 | ----------- | ----------- | ------------------------------------------------------------------------ |
 | 技术栈         | ✅ 100%      | Electron + React + TS + Tailwind                                         |
-| 骨架加载        | ✅ ~92%      | 界/节点/plot_guide/禁忌/门禁 gate、required_item、unlock_clue；仍缺事件/剧情点层级（D-1）     |
+| 骨架加载        | ✅ ~92%      | 界/节点/plot_guide/禁忌/门禁 gate、required_item、unlock_clue；已支持事件/剧情点层级（D-1），待数据接入     |
 | 入界→感应→抉择→结案 | ✅ ~92%      | 核心循环 + AI 叙事/异史/补选项；**正文先于感应**；语义解锁；凭物；**换界**；**中途定稿**                   |
-| **AI 引擎**   | ⚠️ **~72%** | buildContext、灵损摘要、plot/禁忌重试、害分档、coreFacts、补念带 **sceneNarrative**；缺 E16 等 |
+| **AI 引擎**   | ⚠️ **~72%** | buildContext、灵损摘要、plot/禁忌校验（当前无自动重试）、害分档、coreFacts、补念带 **sceneNarrative**；缺 E16 等 |
 | 三相状态        | ✅ ~95%      | 档位 UI（无百分比）；点破按线索降耗；结案 jian_zhao_penalty（反噬）已有                           |
 | 害系统         | ⚠️ **~35%** | 运行时 18 种 HaiId + prompt 滤镜 + 避讳联动；GDD 40+ 害与惊蛰 UI 特效等仍缺                  |
 | 物证/线索系统     | ⚠️ **~55%** | Item/Clue、gate、gain、Overlay 物证/线索框、`catalog.ts` 可扩展展示名                   |
@@ -101,8 +103,8 @@
 
 ### 2.5 与策划内容的交互逻辑（Skeleton Interaction）
 
-- **AI-E18** `narrativeMatchesPlotGuide` + 叙事一次重试（`aiEngine/index.ts`）
-- **AI-E19** 禁忌：选项侧 `violatesTaboo`；叙事生成后同规则检测，`generateNodeNarrative` 一次禁忌重试（`aiEngine/index.ts`）
+- **AI-E18** `narrativeMatchesPlotGuide` + 叙事校验（`aiEngine/index.ts`，当前仅 debug 警告）
+- **AI-E19** 禁忌：选项侧 `violatesTaboo`；叙事生成后同规则检测（`aiEngine/index.ts`，当前仅 debug 警告）
 - **AI-E20** `canEnterNode`；`gateBlocked` 时不拉 AI 选项 effect
 - **AI-E21** 选项后果归属：state、hai_delta、next、conclusion_label 完全由骨架 + applyChoice 控制，AI 不直接改写
 - **AI-E22** 异史核心事实：凝练 prompt 支持 coreFacts 占位，可选列出必含事实；支持 [真史][疑伪][秽] 标签
@@ -173,14 +175,14 @@
 - **M4-2** `InteractionBox`（交互按钮进 Overlay）
 - [~] **M4-3** 卷轴：md 侧栏 + 小屏 Overlay「卷轴」入口；与 GDD「随时独立层」仍可再统一
 - **M4-4** 主界面 **可再 polish**（槽位选择屏等）
-- **M4-5** Electron **electron-builder**：`npm run electron:pack`（见 `game/package.json` `build` 字段）
-- **M4-6** `npm run test:ai` + **Vitest** `npm run test:unit`；GitHub Actions `.github/workflows/ci.yml`（`game` 目录 build + test）
+- **M4-5** Electron **electron-builder**：`npm run electron:pack`（见 `game/package.json` `build` 字段）【已具备脚本/配置】
+- **M4-6** `npm run test:ai` + **Vitest** `npm run test:unit`；GitHub Actions `.github/workflows/ci.yml`（`game` 目录 build + test）【已配置】
 
 ---
 
 ## 四、骨架与数据层增强
 
-- **D-1** 事件/剧情点层级：`Realm.events` + `PlotPoint` + `flattenRealmNodes` / `normalizeLoadedRealm`（`[game/src/game/types.ts](game/src/game/types.ts)`、`[game/src/game/skeleton.ts](game/src/game/skeleton.ts)`）
+- **D-1** 事件/剧情点层级：`Realm.events` + `PlotPoint` + `flattenRealmNodes` / `normalizeLoadedRealm`（`[game/src/game/types.ts](game/src/game/types.ts)`、`[game/src/game/skeleton.ts](game/src/game/skeleton.ts)`）；结构已支持，待数据接入
 - **D-2** `gate` + `required_item` / `unlock_clue`
 - [~] **D-3** `hai_delta` 已有；独立 `hai_trigger` 字段 **未加**
 - **D-4** 指令包扩展：plot_guide（核心剧情导向，可选）、Hais、Items、Clues，与 GDD 5.5 对齐；骨架字段优先用 plot_guide，兼容 truth_anchors
@@ -242,7 +244,7 @@
 | **第 6 轮** | 物证与线索       | [x] M2 主干；M2-8、AI-E16 待                  |
 | **第 7 轮** | 多界与结局       | [x] M3-1 换界、M3-2 定稿、结局链；余 M4-4 界面 polish |
 | **第 8 轮** | 数据库与存读档     | 暂缓 DB；存档已完成                              |
-| **第 9 轮** | 发布候选        | M4-5 打包、M4-6 回归、M4-4 polish              |
+| **第 9 轮** | 发布候选        | M4-4 polish                                   |
 
 
 ---
@@ -269,4 +271,3 @@
 - **害**：40+ 种，【神】【身】【业】【数】
 - **物证**：厌胜、仪轨、随身器；凭物感应
 - **线索**：真名、禁忌、因果残片；语义解锁
-

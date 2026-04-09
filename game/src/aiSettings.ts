@@ -34,6 +34,9 @@ function getOpenAiBaseStoredOrDefaultNormalized(): string {
   }
   const env = (import.meta.env.VITE_OPENAI_BASE_URL as string | undefined)?.trim()
   if (env) return normalizeOpenAiBaseUrl(env)
+  const hasOpenAiKey = Boolean((import.meta.env.VITE_OPENAI_API_KEY as string | undefined)?.trim())
+  const hasAiHubMixKey = Boolean((import.meta.env.VITE_AIHUBMIX_API_KEY as string | undefined)?.trim())
+  if (!hasOpenAiKey && hasAiHubMixKey) return normalizeOpenAiBaseUrl('https://aihubmix.com')
   return DEFAULT_OPENAI_BASE
 }
 
@@ -299,8 +302,11 @@ export async function clearUserApiKeyFromStorage(): Promise<void> {
 export function getGateFormDefaults(): { baseUrl: string; model: string } {
   const envBase = (import.meta.env.VITE_OPENAI_BASE_URL as string | undefined)?.trim()
   const envModel = (import.meta.env.VITE_AI_MODEL_DEFAULT as string | undefined)?.trim()
+  const hasOpenAiKey = Boolean((import.meta.env.VITE_OPENAI_API_KEY as string | undefined)?.trim())
+  const hasAiHubMixKey = Boolean((import.meta.env.VITE_AIHUBMIX_API_KEY as string | undefined)?.trim())
+  const fallbackBase = !hasOpenAiKey && hasAiHubMixKey ? 'https://aihubmix.com' : DEFAULT_OPENAI_BASE
   return {
-    baseUrl: readBaseFromLs() ?? (envBase ? normalizeOpenAiBaseUrl(envBase) : DEFAULT_OPENAI_BASE),
+    baseUrl: readBaseFromLs() ?? (envBase ? normalizeOpenAiBaseUrl(envBase) : normalizeOpenAiBaseUrl(fallbackBase)),
     model: readModelFromLs() ?? envModel ?? DEFAULT_MODEL_SUGGESTION,
   }
 }
