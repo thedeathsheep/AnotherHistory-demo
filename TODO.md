@@ -24,7 +24,7 @@
 
 1. **发布与工程**：Electron **electron-builder** 安装包（M4-5，已具备脚本/配置）；主界面/槽位 **polish**（M4-4）
 2. **体验**：卷轴小屏与侧栏统一（M4-3）；可选 **行旅纪要/抉择回顾** 面板（减上下文焦虑，数据已有 `choiceHistory` / 事实流）
-3. **AI 与内容**：**AI-E16** 物品/NPC 独立模板（当前仅函数/模板，尚未接入流程）；**AI-E22** coreFacts 注入（当前仅 prompt 模板，尚未接线）；流水线把 **skeleton 界** 纳入或与 prologue 同规范生成；结局与害 **与 GDD 逐条对齐**（数据+条件）
+3. **AI 与内容**：**prologue / skeleton 界** 已纳入同一套生成规范；结局与害 **与 GDD 逐条对齐**（数据+条件）
 4. **骨架演进**：**D-1** 事件/剧情点层级（已支持结构，待数据接入）；**D-3** `hai_trigger` 等扩展字段（可选）
 5. **暂缓**：SQLite/上云（`databasePolicy.ts`）
 
@@ -98,7 +98,7 @@
 - **AI-E13** 主叙事 prompt：支持 plot_guide、taboo、objective、三相档位；叙事为游戏服务、极简具体；禁止浅白/抽象/比喻/罗列，要求具体情节点或与前后衔接
 - **AI-E14** 异史凝练 prompt：支持结论标签、抉择摘要、coreFacts、可选 [真史][疑伪][秽] 标签
 - **AI-E15** `generateChoices` + 凭物：持物时 `(凭物)` 念头；**叙事成稿后再请求**，并注入 **【当前境遇正文】**（`sceneNarrative`），与骨架 next 合并
-- **AI-E16** 物品/NPC：`prompts/item.ts`、`prompts/npc.ts`；`generateItemNarrative` / `generateNpcDialogue`（`[game/src/game/aiEngine/index.ts](game/src/game/aiEngine/index.ts)`）；`Node.npcs`、`RealmNpc`
+- **AI-E16** 物品/NPC：`prompts/item.ts`、`prompts/npc.ts`；`generateItemNarrative` / `generateNpcDialogue`（`[game/src/game/aiEngine/index.ts](game/src/game/aiEngine/index.ts)`）；`Node.npcs`、`RealmNpc`；已接入正文主流程，作为正文末尾的补充叙事
 - **AI-E17** 提示词版本化：模板文件纳入 Git，每次修改打 tag 或 commit 说明，便于回归
 
 ### 2.5 与策划内容的交互逻辑（Skeleton Interaction）
@@ -107,7 +107,7 @@
 - **AI-E19** 禁忌：选项侧 `violatesTaboo`；叙事生成后同规则检测（`aiEngine/index.ts`，当前仅 debug 警告）
 - **AI-E20** `canEnterNode`；`gateBlocked` 时不拉 AI 选项 effect
 - **AI-E21** 选项后果归属：state、hai_delta、next、conclusion_label 完全由骨架 + applyChoice 控制，AI 不直接改写
-- **AI-E22** 异史核心事实：凝练 prompt 支持 coreFacts 占位，可选列出必含事实；支持 [真史][疑伪][秽] 标签
+- **AI-E22** 异史核心事实：异史 prompt 支持 coreFacts 占位，可选列出必含事实；支持 [真史][疑伪][秽] 标签；已由统一 helper 接入结案与中途定稿流程
 
 ### 2.6 基础设施
 
@@ -198,8 +198,9 @@
 - **PIPE-5** 合并脚本：`scripts/merge.mjs`，nodes + texts → prologue.json
 - **PIPE-6** 去重：`input_hash.json` 记录输入 hash，相同则跳过该阶段
 - **PIPE-7** CLI：`npm run generate:prologue` 或 `node scripts/generate-chapter.mjs prologue`
-- **PIPE-8** Electron 内「重新生成内容」：主进程 IPC 调用 `node scripts/generate-chapter.mjs prologue --force`，完成后刷新页面；仅 Electron 显示该按钮
+- **PIPE-8** Electron 内「重新生成内容」：主进程 IPC 调用 `node scripts/generate-chapter.mjs --all --force`，完成后刷新页面；仅 Electron 显示该按钮
 - **PIPE-9** 仅合并不调 AI：`node scripts/merge-only.mjs prologue`，用于只改 texts 后更新 merged 与 public/data/prologue.json
+- **PIPE-10** `skeleton` 界接入统一生成：`node scripts/generate-chapter.mjs 折戟原 --force` 生成后回写 `public/data/skeleton.json` 中对应 realm，并保留 `planner_seed`
 
 **文案与节点约定**：ai3_texts.md 规定叙事为游戏服务、极简具体、禁止浅白/抽象/比喻/罗列、节点间逻辑与趣味；ai2_nodes.md 规定节点间 next/plot_guide 形成因果或张力推进。
 
@@ -241,7 +242,7 @@
 | **第 3 轮** | AI + M0     | [x] M0-1、叙事重试、coreFacts、鉴照 CSS           |
 | **第 4 轮** | 数据修改 + 策划交互 | [x] 大部；E19 叙事禁忌重试已接；E7 叙事自动发奖 可选         |
 | **第 5 轮** | 害与鉴照 + 上下文  | [x] AI-E9～E11、M1 主干；M1-8 惊蛰 UI/误触        |
-| **第 6 轮** | 物证与线索       | [x] M2 主干；M2-8、AI-E16 待                  |
+| **第 6 轮** | 物证与线索       | [x] M2 主干；M2-8、AI-E16 已接入                |
 | **第 7 轮** | 多界与结局       | [x] M3-1 换界、M3-2 定稿、结局链；余 M4-4 界面 polish |
 | **第 8 轮** | 数据库与存读档     | 暂缓 DB；存档已完成                              |
 | **第 9 轮** | 发布候选        | M4-4 polish                                   |
@@ -262,7 +263,7 @@
   - 所有描述必须具体：只写具体动作、物象、身体反应；禁止抽象句（思绪、心、意识、清晰的蓝天、宁静的环境、……中游走）、浅白句（渐渐、感受到、内心觉察、熟悉又陌生）、比喻句、罗列。
   - 叙事趣味与节点逻辑：每个节点要有具体情节点或与前后衔接；ai2 节点间 next/plot_guide 形成因果或张力推进，ai3 描述与前后形成衔接。
 - **术语**：核心剧情导向用 `plot_guide`；`truth_anchors` 仅作兼容，loader 优先 plot_guide
-- **Electron 重新生成**：`electron/main.cjs` 用 `node` 跑 `generate-chapter.mjs`；preload 暴露 `regenerateGenerated('prologue')`；成功后 `location.reload()`
+- **Electron 重新生成**：`electron/main.cjs` 用 `node` 跑 `generate-chapter.mjs`；preload 暴露 `regenerateGenerated('__all__')` 触发全量重生成；成功后 `location.reload()`
 - **仅合并文案**：`node scripts/merge-only.mjs prologue`，不调 AI，只把 texts 合并进 merged 与 public/data/prologue.json
 - **GDD 5.5**：AI 引擎完整架构；**GDD 5.6**：数据存储与数据库
 - **入界**：界 > 事件 > 剧情点 > 节点

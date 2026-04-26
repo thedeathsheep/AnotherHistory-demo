@@ -2,6 +2,7 @@ import type { Skeleton, Node, Choice, StatKey, HaiId, Item, Clue, YishiEntry } f
 import { DEFAULT_STATS, MING_ZHU, GEN_JIAO, JIAN_ZHAO, HAI_IDS, normalizeHais } from './types'
 import { itemFromId, clueFromId } from './catalog'
 import { createYishiEntry } from './aiOutput'
+import { applyHaiChoiceConsequences } from './haiChoiceConsequences'
 import type { StoryOutline } from './storyRuntime'
 import { buildDynamicBeatRuntimeNode, parseBeatNext, dynamicNodeId } from './storyRuntime'
 import type { RealmSeed } from './designSeed'
@@ -274,11 +275,10 @@ export class GameState {
   }
 
   applyChoice(choice: Choice): { nextNodeId: string | null; conclusionLabel: string | null } {
-    const delta = choice.state ?? {}
+    const { state: delta, haiDelta } = applyHaiChoiceConsequences(choice, this.hais)
     ;(Object.keys(delta) as StatKey[]).forEach((k) => {
       if (k in this.stats) this.stats[k] += (delta as Record<StatKey, number>)[k] ?? 0
     })
-    const haiDelta = choice.hai_delta ?? delta.hai_delta ?? {}
     HAI_IDS.forEach((k) => {
       this.hais[k] += haiDelta[k] ?? 0
     })

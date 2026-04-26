@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { isAsideLine } from '@/game/narrativeSupplements'
+import { distortNarrativeForHai } from '@/game/narrativeDistortion'
 
 const FOOTER_HEIGHT = '2.75rem'
 
@@ -43,14 +45,34 @@ interface Props {
   content: string
   className?: string
   jianZhaoLevel?: '清彻' | '混浊' | '障目'
+  xueZaoLevel?: number
+  muZhangLevel?: number
   reserveFooter?: boolean
   footerAction?: ReactNode
   /** True while Writer SSE is in progress (shows a subtle cursor). */
   streaming?: boolean
 }
 
-export function NarrativeBox({ title, content, className = '', jianZhaoLevel, reserveFooter, footerAction, streaming }: Props) {
-  const parsedContent = parseKeywordHighlights(content, jianZhaoLevel)
+export function NarrativeBox({
+  title,
+  content,
+  className = '',
+  jianZhaoLevel,
+  xueZaoLevel = 0,
+  muZhangLevel = 0,
+  reserveFooter,
+  footerAction,
+  streaming,
+}: Props) {
+  const distortedContent = distortNarrativeForHai(content, { xueZao: xueZaoLevel, muZhang: muZhangLevel })
+  const lines = distortedContent.split('\n')
+  const parsedContent = lines.flatMap((line, idx) => {
+    const parsedLine = parseKeywordHighlights(line, jianZhaoLevel)
+    const wrapped = isAsideLine(line)
+      ? <span key={`line-${idx}`} className="narrative-aside">{parsedLine}</span>
+      : <span key={`line-${idx}`}>{parsedLine}</span>
+    return idx === lines.length - 1 ? [wrapped] : [wrapped, '\n']
+  })
   return (
     <section
       className={`ui-frame p-4 narrative-box flex flex-col min-h-0 overflow-hidden ${className}`}

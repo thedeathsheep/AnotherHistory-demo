@@ -5,6 +5,7 @@
 
 import type { Choice, Node } from '@/game/types'
 import type { AIGeneratedChoice } from '@/game/aiEngine'
+import { emitDiag } from '@/game/diagnostics'
 
 const RETREAT_HINT = /回|退|绕开|离去|离开|折返|返回|往回|不去|别去|回头/
 const STOPWORDS = /[，。！？、；：“”‘’"'\s]/g
@@ -83,25 +84,38 @@ export function mergeSkeletonChoicesWithAi(node: Node, aiChoices: AIGeneratedCho
     cursor.set(c.next, i + 1)
     return pick ? { ...c, text: pick } : c
   })
-  return dedupeDuplicateDisplayTexts(node, rows)
+  const { choices, deduped } = dedupeDuplicateDisplayTexts(node, rows)
+  emitDiag({
+    type: 'choices:merged',
+    phase: 'choices',
+    nodeId: node.node_id,
+    skeletonCount: node.choices.length,
+    aiCount: Array.isArray(aiChoices) ? aiChoices.length : 0,
+    finalCount: choices.length,
+    deduped,
+  })
+  return choices
 }
 
 /** Same visible text on two buttons is confusing; later rows fall back to skeleton copy. */
-function dedupeDuplicateDisplayTexts(node: Node, merged: Choice[]): Choice[] {
-  if (!node.choices?.length || merged.length !== node.choices.length) return merged
+function dedupeDuplicateDisplayTexts(node: Node, merged: Choice[]): { choices: Choice[]; deduped: number } {
+  if (!node.choices?.length || merged.length !== node.choices.length) return { choices: merged, deduped: 0 }
   const seen = new Set<string>()
   const seenKeys: string[] = []
-  return merged.map((c, i) => {
+  let deduped = 0
+  const choices = merged.map((c, i) => {
     const key = c.text.trim().replace(/\s+/g, ' ')
     const similar = seenKeys.some((k) => tooSimilar(k, key))
     if (seen.has(key) || similar) {
       const sk = node.choices[i]
+      deduped += 1
       return sk ? { ...c, text: sk.text } : c
     }
     seen.add(key)
     seenKeys.push(key)
     return c
   })
+  return { choices, deduped }
 }
 
 /**

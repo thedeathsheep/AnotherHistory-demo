@@ -154,6 +154,10 @@ img, canvas {
   /* base hook if needed */
 }
 
+.narrative-aside {
+  color: var(--dot-muted);
+}
+
 /* 【惊蛰】感应扰动：选项微抖；重度略强 */
 @keyframes jingzhe-jitter {
   0%,

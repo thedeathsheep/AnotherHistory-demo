@@ -10,12 +10,13 @@
  * --all：对存在的 outline 依次跑（默认 prologue、折戟原）
  */
 
-import { readText, readJson, writeJson, writeText, hash, stableJsonStringify, fileExists, getApiKey } from './utils.mjs'
+import { readText, readJson, writeJson, hash, stableJsonStringify, fileExists, getApiKey } from './utils.mjs'
 import { resolvePath } from './utils.mjs'
 import { runAi1 } from './ai1-outline.mjs'
 import { runAi2 } from './ai2-nodes.mjs'
 import { runAi3 } from './ai3-texts.mjs'
 import { merge } from './merge.mjs'
+import { publishChapterOutputs } from './publish-chapter.mjs'
 
 const args = process.argv.slice(2)
 const forceRegenerate = args.includes('--force')
@@ -114,10 +115,10 @@ async function runChapter(chapterId) {
   writeJson(paths.mergedFile, merged)
   writeJson(paths.hashFile, hashes)
 
-  const publicSlug = chapterId === 'prologue' ? 'prologue' : chapterId
-  const destPath = resolvePath('public', 'data', `${publicSlug}.json`)
-  writeText(destPath, JSON.stringify(merged, null, 2))
-  console.log(`[PIPE] Done. ${publicSlug}.json -> ${destPath}`)
+  const outputs = publishChapterOutputs(chapterId, merged)
+  for (const output of outputs) {
+    console.log(`[PIPE] Done. ${output.path} updated`)
+  }
 }
 
 async function main() {

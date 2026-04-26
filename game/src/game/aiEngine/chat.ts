@@ -6,6 +6,7 @@
 import { resolveOpenAiFetchTarget, type OpenAiFetchTarget } from '@/aiSettings'
 import { getModelForRole, type AIAgentRole } from './aiModels'
 import { emitAiDebug } from './aiDebugBus'
+import { emitDiag, summarizeMessages, clipText } from '@/game/diagnostics'
 
 const REQUEST_TIMEOUT = 90000
 const MAX_RETRIES = 2
@@ -124,6 +125,16 @@ export async function chat(
   const start = Date.now()
   const ft = defaultFetchTarget()
   log(label, `request start → ${ft.urlBase}/chat/completions model=${model}`)
+  emitDiag({
+    type: 'ai:request_start',
+    phase: 'ai',
+    label,
+    agentRole: opts.agentRole,
+    model,
+    stream: false,
+    urlBase: ft.urlBase,
+    promptSummary: summarizeMessages(messages),
+  })
   let lastErr: Error | null = null
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -156,6 +167,18 @@ export async function chat(
       const ms = Date.now() - start
       log(label, `done in ${ms}ms, ok=${Boolean(content?.trim())}`)
       const trimmed = content?.trim() ?? null
+      emitDiag({
+        type: 'ai:request_ok',
+        phase: 'ai',
+        label,
+        agentRole: opts.agentRole,
+        model,
+        stream: false,
+        ms,
+        outputSummary: trimmed
+          ? { chars: trimmed.length, head: clipText(trimmed, 220) }
+          : { chars: 0 },
+      })
       if (!trimmed && throwOnFailure) throw new Error('Empty model response')
       return trimmed
     } catch (e) {
@@ -168,6 +191,17 @@ export async function chat(
     console.warn(`[AI] ${w}`)
     emitAiDebug(w, 'warn')
   }
+  emitDiag({
+    type: 'ai:request_fail',
+    phase: 'ai',
+    level: throwOnFailure ? 'error' : 'warn',
+    label,
+    agentRole: opts.agentRole,
+    model,
+    stream: false,
+    ms: Date.now() - start,
+    error: lastErr?.message ?? 'unknown',
+  })
   if (throwOnFailure && lastErr) throw lastErr
   return null
 }
@@ -191,6 +225,16 @@ export async function chatStream(
   const start = Date.now()
   const ft = defaultFetchTarget()
   log(label, `stream start → ${ft.urlBase}/chat/completions model=${model}`)
+  emitDiag({
+    type: 'ai:request_start',
+    phase: 'ai',
+    label,
+    agentRole: options.agentRole,
+    model,
+    stream: true,
+    urlBase: ft.urlBase,
+    promptSummary: summarizeMessages(messages),
+  })
 
   const ctrl = new AbortController()
   const outerSignal = signal
@@ -268,6 +312,16 @@ export async function chatStream(
     const trimmed = full.trim()
     // Keep last streamed frame aligned with return value (avoids UI jump trim vs cache)
     if (trimmed && trimmed !== full) onChunk(trimmed)
+    emitDiag({
+      type: 'ai:request_ok',
+      phase: 'ai',
+      label,
+      agentRole: options.agentRole,
+      model,
+      stream: true,
+      ms,
+      outputSummary: trimmed ? { chars: trimmed.length, head: clipText(trimmed, 220) } : { chars: 0 },
+    })
     return trimmed || null
   } catch (e) {
     clearTimeout(timeoutId)
@@ -278,6 +332,17 @@ export async function chatStream(
       console.warn(`[AI] ${w}`)
       emitAiDebug(w, 'warn')
     }
+    emitDiag({
+      type: 'ai:request_fail',
+      phase: 'ai',
+      level: options.throwOnFailure ? 'error' : 'warn',
+      label,
+      agentRole: options.agentRole,
+      model,
+      stream: true,
+      ms: Date.now() - start,
+      error: err.message,
+    })
     return null
   } finally {
     if (outerSignal) outerSignal.removeEventListener('abort', onAbort)

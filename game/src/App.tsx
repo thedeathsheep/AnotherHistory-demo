@@ -28,6 +28,8 @@ import type { Skeleton, Node, Choice } from '@/game/types'
 import {
   generateNodeNarrative,
   generateYishi,
+  generateItemNarrative,
+  generateNpcDialogue,
   generateChoices,
   generateDynamicBeatNarrative,
   generateDynamicBeatChoices,
@@ -38,12 +40,16 @@ import {
   type LayeredContextInput,
 } from '@/game/aiBridge'
 import { loadDesignSeed } from '@/game/designSeed'
+import { formatSupplementBlock, pickItemSupplement, pickNpcSupplements } from '@/game/narrativeSupplements'
 import {
   beatNextToken,
   buildDynamicBeatRuntimeNode,
   dynamicNodeId,
   type NodeDirective,
 } from '@/game/storyRuntime'
+import { buildYishiCoreFacts } from '@/game/yishiFacts'
+import { chooseDianPoTarget } from '@/game/dianpo'
+import { filterChoicesByHaiVisibility, getHaiActionFeedback } from '@/game/haiChoicePresentation'
 import {
   getApiKey,
   rememberAiSettings,
@@ -72,7 +78,9 @@ import { ItemBox } from '@/components/ItemBox'
 import { ClueBox } from '@/components/ClueBox'
 import { InteractionBox } from '@/components/InteractionBox'
 import { AiDebugOverlay } from '@/components/AiDebugOverlay'
+import { DiagnosticsPanel } from '@/components/DiagnosticsPanel'
 import { emitAiDebug } from '@/game/aiEngine/aiDebugBus'
+import { emitDiag } from '@/game/diagnostics'
 import { NarrativeContextManager } from '@/game/narrativeContext'
 import {
   mergeSkeletonChoicesWithAi,
@@ -90,11 +98,12 @@ type FlyState = {
 type Panel = null | 'items' | 'clues' | 'menu' | 'yishi'
 
 /** AI 正在写境遇正文（非「感应」阶段） */
-const AI_BODY_LOADING_HINT = '境遇正文凝练中…'
+const AI_BODY_LOADING_HINT = '正在写当前境遇…'
 /** 正文未出时不占位展示选项，仅作说明 */
-const SENSE_AFTER_BODY_HINT = '待正文落定，感应方显。'
+const SENSE_AFTER_BODY_HINT = '正文写好后，感应才会出现。'
 /** 感应与骨架合并完成前，不展示可点列表 */
-const AI_CHOICE_LOADING_HINT = '感应凝练中…'
+const AI_CHOICE_LOADING_HINT = '正在生成感应…'
+const REGENERATE_ALL = '__all__'
 
 const UI_HINT_DIANPO_KEY = 'anothistory.uiHint.dianPoSeen'
 const UI_HINT_MID_CONCLUDE_KEY = 'anothistory.uiHint.midConcludeSeen'
@@ -166,6 +175,18 @@ export default function App() {
   const [keyGateError, setKeyGateError] = useState<string | null>(null)
   const [keyGateValidating, setKeyGateValidating] = useState(false)
   const keyGateReasonRef = useRef<'bootstrap' | 'change'>('bootstrap')
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.shiftKey)) return
+      if (e.key.toLowerCase() !== 'd') return
+      e.preventDefault()
+      setDiagnosticsOpen((v) => !v)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const refreshSaveSummaries = () => setSaveSummaries(listSaveSummaries())
 
@@ -276,6 +297,48 @@ export default function App() {
   const refreshNodeNarrativeRef = useRef(refreshNodeNarrative)
   refreshNodeNarrativeRef.current = refreshNodeNarrative
 
+  const appendNarrativeSupplements = useCallback(
+    async (baseText: string, targetNode: Node): Promise<string> => {
+      const body = baseText.trim()
+      if (!body || !apiKey || !game) return baseText
+
+      const supplementLines: string[] = []
+      const npcs = pickNpcSupplements(targetNode.npcs ?? [])
+      for (const npc of npcs) {
+        try {
+          const line = await generateNpcDialogue(apiKey, npc, body, game.clues, game.hais)
+          if (line?.trim()) supplementLines.push(line.trim())
+        } catch {
+          // Narrative supplement is optional; skip on failure.
+        }
+      }
+
+      const item = pickItemSupplement(game.items)
+      if (item) {
+        try {
+          const line = await generateItemNarrative(apiKey, item, game.clues, game.hais)
+          if (line?.trim()) supplementLines.push(line.trim())
+        } catch {
+          // Narrative supplement is optional; skip on failure.
+        }
+      }
+
+      const block = formatSupplementBlock(supplementLines)
+      const merged = block ? `${body}\n${block}` : body
+      emitDiag({
+        type: 'supplement:done',
+        phase: 'supplement',
+        nodeId: targetNode.node_id,
+        npcCount: npcs.length,
+        itemUsed: Boolean(item),
+        addedLines: supplementLines.length,
+        finalChars: merged.length,
+      })
+      return merged
+    },
+    [apiKey, game]
+  )
+
   const node = game?.getCurrentNode() ?? null
   const currentNodeId = node?.node_id ?? null
   const realmName = game?.realmName ?? ''
@@ -287,6 +350,16 @@ export default function App() {
   useEffect(() => {
     if (!node?.node_id || !game) return
     narrativeCtxRef.current.appendFact(`入点 ${node.node_id}${node.story_beat ? `：${node.story_beat}` : ''}`)
+    emitDiag({
+      type: 'app:node_enter',
+      phase: 'ui',
+      nodeId: node.node_id,
+      engineMode: game.engineMode,
+      beatIndex: game.currentBeatIndex,
+      realmId: game.realmId,
+      realmName: game.realmName,
+      storyBeat: node.story_beat,
+    })
   }, [currentNodeId, node?.story_beat, game])
 
   /** Fetch narrative when beat id / game / flags change only — not when `node` object identity or `cachedNarrative` updates (those would cancel in-flight stream or duplicate runs). */
@@ -316,6 +389,13 @@ export default function App() {
     const runSkeleton = (): void => {
       setNarrativeLoading(true)
       setStreamBody({ nid, text: '' })
+      emitDiag({
+        type: 'narrative:trigger',
+        phase: 'narrative',
+        nodeId: nid,
+        dynamic: false,
+        reason: 'skeleton_writer',
+      })
       if (AI_DEBUG) {
         const m = `Trigger AI narrative for node: ${nid}`
         console.log(`[App] ${m}`)
@@ -327,10 +407,17 @@ export default function App() {
         },
         streamSignal: streamCtrl.signal,
       })
-        .then((desc) => {
+        .then(async (desc) => {
           if (!cancelled) {
             const fallback = node.description?.trim() || node.story_beat || '（叙事加载失败）'
-            setCachedNarrative((prev) => ({ ...prev, [nid]: desc || fallback }))
+            const mergedBody = await appendNarrativeSupplements(desc || fallback, node)
+            setCachedNarrative((prev) => ({ ...prev, [nid]: mergedBody }))
+            emitDiag({
+              type: 'narrative:cached',
+              phase: 'narrative',
+              nodeId: nid,
+              chars: mergedBody.length,
+            })
           }
         })
         .finally(() => {
@@ -341,6 +428,13 @@ export default function App() {
     const runDynamic = async (): Promise<void> => {
       setNarrativeLoading(true)
       setStreamBody({ nid, text: '' })
+      emitDiag({
+        type: 'narrative:trigger',
+        phase: 'narrative',
+        nodeId: nid,
+        dynamic: true,
+        reason: 'dynamic_writer',
+      })
       try {
         const outline = game.storyOutline
         const beatIndex = game.currentBeatIndex ?? 0
@@ -394,11 +488,12 @@ export default function App() {
         })
         if (cancelled) return
         const body = text?.trim() || node.description?.trim() || '（叙事加载失败）'
+        const mergedBody = await appendNarrativeSupplements(body, node)
         const latest = game.getCurrentNode()
         const base = latest?.node_id === nid ? latest : node
         game.registerRuntimeNode({
           ...base,
-          description: body,
+          description: mergedBody,
           plot_guide: plotGuide.length ? plotGuide : ['境遇'],
           taboo,
           gate: undefined,
@@ -423,11 +518,23 @@ export default function App() {
             })
           }
         }
-        setCachedNarrative((prev) => ({ ...prev, [nid]: body }))
+        setCachedNarrative((prev) => ({ ...prev, [nid]: mergedBody }))
+        emitDiag({
+          type: 'narrative:cached',
+          phase: 'narrative',
+          nodeId: nid,
+          chars: mergedBody.length,
+        })
       } catch {
         if (!cancelled) {
           const fallback = node.description?.trim() || node.story_beat || '（叙事加载失败）'
           setCachedNarrative((prev) => ({ ...prev, [nid]: fallback }))
+          emitDiag({
+            type: 'narrative:cached',
+            phase: 'narrative',
+            nodeId: nid,
+            chars: fallback.length,
+          })
         }
       } finally {
         if (!cancelled) {
@@ -446,7 +553,7 @@ export default function App() {
       setStreamBody(null)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- see JSDoc on this effect; refresh via refreshNodeNarrativeRef
-  }, [loading, skeleton, game, currentNodeId, useAi, apiKey])
+  }, [loading, skeleton, game, currentNodeId, useAi, apiKey, appendNarrativeSupplements])
 
   useEffect(() => {
     if (loading || !game || !node || !apiKey) return
@@ -463,6 +570,13 @@ export default function App() {
 
     let cancelled = false
     setChoicesLoading(true)
+    emitDiag({
+      type: 'choices:trigger',
+      phase: 'choices',
+      nodeId: nid,
+      dynamic: Boolean(isDyn),
+      reason: isDyn ? 'dynamic_choices' : (isRt ? 'rt_choices' : 'skeleton_choices'),
+    })
     if (AI_DEBUG) {
       const m = `Trigger AI choices for node: ${nid}`
       console.log(`[App] ${m}`)
@@ -510,9 +624,10 @@ export default function App() {
     ;(async () => {
       // Optional: Conductor can decide to add rt: micro-branching entry choices.
       let augmentedSkeletonChoices: Choice[] | null = null
+      let plan = null
       if (!isRt && nodeUseAi) {
         const allowedNexts = [...new Set((node.choices ?? []).map((c) => c.next).filter(Boolean))]
-        const plan = await runConductor({
+        plan = await runConductor({
           apiKey,
           node,
           realmName: game.realmName,
@@ -590,7 +705,7 @@ export default function App() {
     setRegenerateError(null)
     setRegenerating(true)
     try {
-      const result = await window.electronAPI.regenerateGenerated('prologue')
+      const result = await window.electronAPI.regenerateGenerated(REGENERATE_ALL)
       if (result.ok) window.location.reload()
       else setRegenerateError(result.error ?? '生成失败')
     } catch (e) {
@@ -961,17 +1076,31 @@ export default function App() {
       }, 4500)
       return
     }
+    const haiFeedback = getHaiActionFeedback(choice.text, game.hais)
+    if (haiFeedback.preMessage) {
+      if (acquireTimerRef.current) clearTimeout(acquireTimerRef.current)
+      setAcquireBanner(haiFeedback.preMessage)
+      if (haiFeedback.preDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, haiFeedback.preDelayMs))
+      }
+    }
     const taboos = node.taboo ?? []
-    const coreFacts = [
-      ...(node.plot_guide ?? []).slice(0, 3),
-      ...(node.objective ? [node.objective] : []),
-    ].filter(Boolean)
     if (violatesTaboo(choice.text, taboos)) {
       applyTabooViolationToState(game.stats, game.hais)
     }
     const itemsBefore = new Set(game.itemIds())
     const cluesBefore = new Set(game.clueIds())
     const { conclusionLabel } = game.applyChoice(choice)
+    const coreFacts = buildYishiCoreFacts({
+      nodeId: node.node_id,
+      conclusionLabel: conclusionLabel ?? '',
+      plotGuide: node.plot_guide ?? [],
+      truthAnchors: node.truth_anchors ?? [],
+      objective: node.objective,
+      items: game.items,
+      clues: game.clues,
+      isMidConclude: false,
+    })
     const newItems = game.items.filter((i) => !itemsBefore.has(i.id))
     const newClues = game.clues.filter((c) => !cluesBefore.has(c.id))
     if (newItems.length || newClues.length) {
@@ -984,6 +1113,13 @@ export default function App() {
         setAcquireBanner(null)
         acquireTimerRef.current = null
       }, 4500)
+    } else if (haiFeedback.postMessage) {
+      if (acquireTimerRef.current) clearTimeout(acquireTimerRef.current)
+      setAcquireBanner(haiFeedback.postMessage)
+      acquireTimerRef.current = setTimeout(() => {
+        setAcquireBanner(null)
+        acquireTimerRef.current = null
+      }, 3200)
     }
     narrativeCtxRef.current.appendFact(`${node.node_id}：${choice.text}`)
     game.appendWorldGraphEvent({
@@ -1026,16 +1162,21 @@ export default function App() {
     if (!beatNarrativeReady || choicesInteractLocked) return
     if (
       !window.confirm(
-        '确定要中途定稿吗？将离开当前境遇，以「中途定稿」凝练一条异史；命烛、根脚、鉴照与书箱保留。'
+          '确定要中途定稿吗？将离开当前境遇，并以「中途定稿」写成一条异史；命烛、根脚、鉴照与书箱保留。'
       )
     )
       return
     dismissMidConcludeGuide()
-    const coreFacts = [
-      `定稿于节点 ${node.node_id}`,
-      ...(node.plot_guide ?? node.truth_anchors ?? []).slice(0, 2),
-      ...(node.objective ? [node.objective] : []),
-    ].filter(Boolean)
+    const coreFacts = buildYishiCoreFacts({
+      nodeId: node.node_id,
+      conclusionLabel: MID_CONCLUDE_LABEL,
+      plotGuide: node.plot_guide ?? [],
+      truthAnchors: node.truth_anchors ?? [],
+      objective: node.objective,
+      items: game.items,
+      clues: game.clues,
+      isMidConclude: true,
+    })
     narrativeCtxRef.current.appendFact(`${node.node_id}：${MID_CONCLUDE_LABEL}`)
     game.beginMidConclude()
     saveGameState(game, activeSaveSlot)
@@ -1126,10 +1267,24 @@ export default function App() {
       .filter(({ choice }) => filterChoicesByClue([choice], game.clueIds()).length > 0)
     if (indexed.length <= 1) return
     const taboos = node.taboo ?? []
-    const tabooPool = indexed.filter(({ choice }) => violatesTaboo(choice.text, taboos))
-    const pool = tabooPool.length > 0 ? tabooPool : indexed
-    const pick = pool[Math.floor(Math.random() * pool.length)]!
-    setDianPoRemovedIndex(pick.origIndex)
+    const tabooTexts = indexed
+      .filter(({ choice }) => violatesTaboo(choice.text, taboos))
+      .map(({ choice }) => choice.text)
+    const result = chooseDianPoTarget({
+      indexed,
+      tabooTexts,
+      xueZaoLevel: game.hais.xue_zao ?? 0,
+      muZhangLevel: game.hais.mu_zhang ?? 0,
+    })
+    if (result.message) {
+      setAcquireBanner(result.message)
+      if (acquireTimerRef.current) clearTimeout(acquireTimerRef.current)
+      acquireTimerRef.current = setTimeout(() => {
+        setAcquireBanner(null)
+        acquireTimerRef.current = null
+      }, 2600)
+    }
+    setDianPoRemovedIndex(result.removedIndex)
     forceUpdate()
   }
 
@@ -1195,6 +1350,8 @@ export default function App() {
             content={showNarrativeContent}
             className="flex-1 min-h-[200px]"
             jianZhaoLevel={game ? (statLabel('jian_zhao', game.stats.jian_zhao) as '清彻' | '混浊' | '障目') : undefined}
+            xueZaoLevel={game?.hais.xue_zao ?? 0}
+            muZhangLevel={game?.hais.mu_zhang ?? 0}
             streaming={Boolean(
               node &&
                 streamBody?.nid === node.node_id &&
@@ -1378,7 +1535,7 @@ export default function App() {
                 ) : (
                   (() => {
                     const baseChoices = getDisplayChoicesForNode(node, cachedAiChoices, isDynamicBeat)
-                    const filtered = baseChoices
+                    const filtered = filterChoicesByHaiVisibility(baseChoices, game.hais)
                       .map((choice, origIndex) => ({ choice, origIndex }))
                       .filter(({ choice }) => filterChoicesByClue([choice], game.clueIds()).length > 0)
                       .filter(({ origIndex }) => origIndex !== dianPoRemovedIndex)
@@ -1509,6 +1666,7 @@ export default function App() {
         )}
 
       <AiDebugOverlay />
+      <DiagnosticsPanel open={diagnosticsOpen} onClose={() => setDiagnosticsOpen(false)} />
     </div>
   )
 }

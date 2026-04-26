@@ -27,6 +27,6 @@ export function humanizePlannerError(message: string): string {
   return `动态大纲失败：${message}`
 }
 
-export const PLANNER_LOADING_HINT = '正在构思故事大纲…'
+export const PLANNER_LOADING_HINT = '正在安排这一段故事…'
 export const PLANNER_FALLBACK_HINT =
   '故事大纲未生成有效结构，已使用骨架流程。可检查网络、API Key 与账户额度。'

@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { spawn } = require('child_process')
+const { buildGenerateChapterArgs } = require('./regenerateArgs.cjs')
 
 const isDev = !app.isPackaged
 
@@ -153,9 +154,10 @@ ipcMain.handle('regenerate-generated', async (_event, chapterId = 'prologue') =>
       resolve(result)
     }
     const scriptPath = path.join(appRoot, 'scripts', 'generate-chapter.mjs')
+    const args = [scriptPath, ...buildGenerateChapterArgs(chapterId)]
     const child = spawn(
       'node',
-      [scriptPath, chapterId, '--force'],
+      args,
       { cwd: appRoot, stdio: ['ignore', 'pipe', 'pipe'], shell: false }
     )
     let stdout = ''

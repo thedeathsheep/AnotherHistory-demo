@@ -62,4 +62,52 @@ describe('evaluateEnding', () => {
     g.stats.jian_zhao = 90
     expect(evaluateEnding(g)).toBe('C')
   })
+
+  it('returns O for mid-conclude with trust item', () => {
+    const g = new GameState(miniSk())
+    g.startRealm()
+    g.items = [{ id: 'i1', name: '托付木牌', category: '随身器' }]
+    g.yishiEntries = [createYishiEntry('[疑伪] 中途定稿')]
+    g.beginMidConclude()
+
+    expect(evaluateEnding(g)).toBe('O')
+  })
+
+  it('returns X for mid-conclude with hui-tag entry when no trust item', () => {
+    const g = new GameState(miniSk())
+    g.startRealm()
+    g.yishiEntries = [createYishiEntry('[秽] 中途定稿')]
+    g.beginMidConclude()
+
+    expect(evaluateEnding(g)).toBe('X')
+  })
+
+  it('returns N for plain mid-conclude', () => {
+    const g = new GameState(miniSk())
+    g.startRealm()
+    g.yishiEntries = [createYishiEntry('[疑伪] 中途定稿')]
+    g.beginMidConclude()
+
+    expect(evaluateEnding(g)).toBe('N')
+  })
+
+  it('returns G only when player explicitly chose not to record', () => {
+    const g = new GameState(miniSk())
+    g.startRealm()
+    g.stats.jian_zhao = 95
+    g.yishiEntries = [createYishiEntry('[疑伪] 一条记录')]
+    g.choiceHistory.push({ text: '不予记录，收笔离开', next: '__结案__', state: {} })
+
+    expect(evaluateEnding(g)).toBe('G')
+  })
+
+  it('does not return G from high jian_zhao alone', () => {
+    const g = new GameState(miniSk())
+    g.startRealm()
+    g.stats.jian_zhao = 95
+    g.yishiEntries = [createYishiEntry('[疑伪] 一条记录')]
+    g.choiceHistory.push({ text: '继续记下去', next: '__结案__', state: {} })
+
+    expect(evaluateEnding(g)).not.toBe('G')
+  })
 })

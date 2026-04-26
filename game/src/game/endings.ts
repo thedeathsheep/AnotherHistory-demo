@@ -285,6 +285,8 @@ export function evaluateEnding(game: GameState): string {
 
   const zhenRatio = total > 0 ? zhenshi / total : 0
   const yiweiRatio = total > 0 ? yiwei / total : 0
+  const midConclude = yishiEntries.some((e) => e.text.includes('中途定稿'))
+  const refusedToRecord = choiceHistory.some((c) => /不予记录|不记|不录|收笔|空卷|白卷/.test(c.text))
 
   if (zhenRatio >= 0.9 && jianZhaoLabel === '清彻' && total >= 1) return 'A'
   if (zhenRatio >= 1 && total >= 3 && (hais.wei_tuo ?? 0) < 30) return 'I'
@@ -301,8 +303,6 @@ export function evaluateEnding(game: GameState): string {
 
   if ((hais.zhai_chang ?? 0) > 75 && total < 4 && total >= 1) return 'H'
 
-  if (stats.jian_zhao > 85 && yishiEntries.length > 0 && zhenRatio < 0.2) return 'G'
-
   if ((hais.ling_sun ?? 0) > 74 && total >= 2) return 'J'
 
   if ((hais.dao_shi ?? 0) > 44 && total >= 2) return 'K'
@@ -310,15 +310,18 @@ export function evaluateEnding(game: GameState): string {
   const ritualN = items.filter((i) => i.category === '仪轨').length
   if (ritualN >= 2 && (jianZhaoLabel === '清彻' || jianZhaoLabel === '障目')) return 'L'
 
-  const hasZhenming = clues.some((c) => c.category === '真名')
-  if (!hasZhenming && total >= 1 && total <= 4 && yiweiRatio < 0.4) return 'M'
-
-  const midConclude = yishiEntries.some((e) => e.text.includes('中途定稿'))
   if (midConclude && total <= 3 && total >= 1) {
     const trustItem = items.some((i) => /托付|所托|遗/.test(`${i.name}${i.description ?? ''}`))
     if (trustItem) return 'O'
     if (hui >= 1) return 'X'
     return 'N'
+  }
+
+  const hasZhenming = clues.some((c) => c.category === '真名')
+  if (!hasZhenming && total >= 1 && total <= 4 && yiweiRatio < 0.4) return 'M'
+
+  if (stats.jian_zhao > 85 && yishiEntries.length > 0 && zhenRatio < 0.2 && refusedToRecord) {
+    return 'G'
   }
 
   const haiHeavy = HAI_IDS.some((k) => (hais[k] ?? 0) > 60) || haiTotal > 100
