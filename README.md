@@ -16,9 +16,10 @@ npm run dev
 
 | 文档 | 用途 |
 |------|------|
-| [`TODO.md`](TODO.md) | **完成度 / 接下来做啥**（与代码同步维护） |
+| [`核心设计.md`](核心设计.md) | **权威**：这是什么游戏、核心流程（与其他文档冲突时以此为准） |
+| [`TODO.md`](TODO.md) | **完成度 / 接下来做啥**（与代码同步维护；完成度对照 GDD，不代表可玩程度） |
 | [`game/README.md`](game/README.md) | 安装、流水线、目录、存档与运行时摘要 |
-| [`GDD.md`](GDD.md) | 游戏设计全文 |
+| [`GDD.md`](GDD.md) | 素材库：害表、结局矩阵、物证线索分类（非需求） |
 | [`TechnicalFrame.md`](TechnicalFrame.md) | 技术架构与模块职责 |
 | [`ProjectManager.md`](ProjectManager.md) | 迭代与协作建议 |
 | [`操作流程.md`](操作流程.md) | 环境、路径、常见问题 |
